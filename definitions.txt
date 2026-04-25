@@ -1,0 +1,177 @@
+24	const AI_CONFIG_OVERRIDE = {};
+29	const App = {
+63	const LOCAL_FOOD_DB = [
+698	const SYNONYMS_MAP = {
+825	const LS = {
+839	function getLocalDateString(date) {
+847	function toDateStr(date) {
+851	function formatDateLabel(date) {
+865	function greetingByHour() {
+875	function checkAndResetForNewDay() {
+890	function showToast(message, type = 'success', icon = '') {
+916	function calculateBMR(gender, age, weight, height) {
+921	function calculateTDEE(bmr, activity) {
+925	function calculateDailyCalories(tdee, goal) {
+929	function calculateMacros(dailyCal, goal) {
+941	function goalLabel(goal) {
+944	function activityLabel(level) {
+951	async function initApp() {
+968	function setGreeting() {
+977	function handleURLParams() {
+1031	function navigateTo(page) {
+1065	function injectWaterPage() {
+1109	function levenshteinDistance(a, b) {
+1128	function fuzzyScore(a, b) {
+1137	function normalizeSearchText(text) {
+1154	function applySynonyms(text) {
+1172	function splitByConnectors(text) {
+1182	const SEARCH_STOP_WORDS = new Set([
+1188	const NUMBER_WORDS = {
+1194	const UNIT_ALIASES = {
+1218	const DEFAULT_UNIT_GRAMS = {
+1225	const QUANTITY_PATTERN = 'media docena|docena|tres cuartos|medio|media|cuarto|un|una|uno|dos|tres|cu
+1226	const UNIT_PATTERN = 'kg|kilos?|g|grs?|gramos?|ml|mililitros?|l|lt|litros?|tazas?|vasos?|cucharadas?
+1228	function normalizeText(text) {
+1232	function escapeRegExp(value) {
+1236	function prettyQty(value) {
+1240	function parseQuantityValue(raw) {
+1247	function canonicalUnit(raw) {
+1251	function convertEstimate(food, quantityRaw, unitRaw) {
+1277	function getFoodAliases(food) {
+1281	function estimateFoodPortion(normalizedText, food, totalMatches = 1) {
+1305	function buildAIFoodFromLocalFood(food, estimate) {
+1324	function findLocalFoodMentions(text) {
+1382	function smartOfflineAnalyzeText(text) {
+1431	function extractFoodKeywords(text) {
+1441	function getAIConfig() {
+1447	function loadAIConfig() {
+1456	function saveAIConfig() {
+1466	function updateAIStatusBar(hasKey) {
+1479	function round1(value) {
+1483	function sanitizeAIFoodItem(a = {}) {
+1497	function getAISourceTitle() {
+1504	function getSelectedAIMealLabel() {
+1513	function makeAIResultQuantityLabel(food) {
+1520	function getAIFallbackSearchSeed(text = '') {
+1526	function openManualFoodRegistration(seedText = '') {
+1538	function blobToDataURL(blob) {
+1547	function fileToDataURL(file) {
+1556	function loadImageFromDataURL(dataUrl) {
+1565	function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.8) {
+1577	async function processImageForAI(file) {
+1617	function triggerAIImagePicker() {
+1624	function renderAIImagePreview() {
+1646	function clearAIImageSelection(silent = false) {
+1657	async function handleAIImageSelection(event) {
+1675	function renderAIResultsLoading(mode = 'text') {
+1703	function updateAIResultsSummary() {
+1751	function renderAIFoodEditNav() {
+1767	function renderAIFoodEditSummary() {
+1791	function loadAIFoodIntoEditor(index = 0) {
+1815	function persistCurrentAIFoodFromForm() {
+1846	function selectAIFoodEditorItem(index) {
+1851	function openAIFoodEditModal(resetIndex = false) {
+1866	function closeAIFoodEditModal(event) {
+1872	function validatePendingAIFoods() {
+1892	async function saveEditedAIFoods() {
+1934	function setupAIEditorListeners() {
+1943	function getCachedAIAnalysis(text) {
+1948	function setCachedAIAnalysis(text, result) {
+1958	async function activateOfflineSmartFallback(text, originalError = null) {
+1979	async function getNutrientsFromAI(text, imageData = null) {
+2030	async function callGeminiAPI(apiKey, systemPrompt, userText, imageData = null) {
+2111	function parseAIResponse(raw) {
+2126	async function analyzeWithAI() {
+2187	async function fallbackToOpenFoodFacts(text) {
+2216	function renderAIResults(alimentos) {
+2229	function confirmAIFoods() {
+2234	function clearAIResults() {
+2243	async function refreshAIInsight() {
+2291	async function callAIText(cfg, userPrompt) {
+2311	function generateLocalInsight(totals, goals) {
+2326	function toggleVoiceInput() {
+2359	function selectAIMeal(btn) {
+2365	function getSelectedAIMeal() { return App.selectedAIMeal || 'breakfast'; }
+2374	let _searchAbortController = null;
+2376	async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+2392	function searchLocalFoodDatabase(query, limit = 12) {
+2437	async function searchOpenFoodFactsRemote(query, signal) {
+2501	function mergeFoodResults(localResults, apiResults) {
+2513	function updateSearchSourceBadge(foods = []) {
+2521	async function searchOpenFoodFacts(query) {
+2541	function getFavorites() {
+2573	function addLogToFavorites(logId) {
+2578	function removeFavorite(favId) {
+2585	function renderFavorites() {
+2626	function toggleFavoritesModal(show, event) {
+2639	let pendingFavToAdd = null;
+2641	function prepareFavAdd(fav) {
+2677	let searchDebounceTimer = null;
+2679	function openAddFood(event, mealType) {
+2704	function closeFoodModal(event) {
+2710	function closeModal() {
+2715	async function searchFood(query) {
+2737	function renderSearchSkeleton() {
+2747	function renderFoodSearchResults(foods) {
+2795	function selectFoodFromSearch(food) {
+2804	async function confirmAddFood() {
+2835	async function quickAddCalories() {
+2861	function saveFoodLogLocal(logData) {
+2867	function deleteFoodLogLocal(logId, dateStr) {
+2872	async function deleteFoodLog(logId) {
+2884	async function refreshDashboard() {
+2914	function computeTotals(logs) {
+2929	function updateCaloriesRing(consumed, goal) {
+2958	function updateMacroBars(totals) {
+2977	function loadTodayWater() {
+2982	function renderDashboardWater() {
+3003	async function quickSetWater(glasses) {
+3013	async function refreshDiary() {
+3021	function changeDate(delta) {
+3028	function renderDiaryMeals(logs) {
+3046	function createFoodItem(log) {
+3095	function toggleMealSection() { /* secciones siempre expandidas */ }
+3097	function escapeHtml(str) {
+3106	async function refreshWaterPage() {
+3127	function updateWaterProgressArc(current, goal) {
+3136	function renderBigGlassGrid(current, goal) {
+3150	async function addWater() {
+3161	async function removeWater() {
+3170	async function setWaterTo(count) {
+3178	function renderWaterChart() {
+3205	async function refreshProgress() {
+3211	function loadAndRenderWeightChart() {
+3244	function loadAndRenderCaloriesChart() {
+3277	async function logWeight() {
+3302	function refreshProfile() {
+3337	async function saveProfile() {
+3365	function clearDataConfirm() {
+3388	let currentStep = 0;
+3389	const totalSteps = 4;
+3390	const ob = { name: '', gender: '', age: 0, height: 0, weight: 0, activity: '', goal: '' };
+3392	function nextStep() { if (!validateStep(currentStep)) return; if (currentStep < totalSteps - 1) { cu
+3393	function prevStep() { if (currentStep > 0) { currentStep--; updateStepUI(); } }
+3395	function updateStepUI() {
+3401	function validateStep(step) {
+3423	function selectGender(btn) {
+3429	function selectActivity(card) {
+3435	function selectGoal(card) {
+3454	async function finishOnboarding() {
+3512	const ScannerState = {
+3520	function _scannerSetPhase(active) {
+3530	function _scannerSetStatus(text, spinning) {
+3540	function _scannerShowBarcodeResult(text) {
+3547	function _scannerHideBarcodeResult() {
+3553	function openScannerModal() {
+3569	async function closeScannerModal() {
+3580	async function _startBarcodeScanner() {
+3608	async function _stopBarcodeScanner() {
+3616	async function _onBarcodeDetected(decodedText) {
+3627	async function _queryOpenFoodFactsByBarcode(barcode) {
+3661	function _triggerLabelPhotoFallback() {
+3670	async function _analyzeLabelWithGemini(imageFile) {
+3735	function _registerScannedProduct(food, qty, sourceOverride) {
+3767	function exportData() {
+3798	function importData(event) {
+3834	function initScannerEvents() {
+4218	let currentChefRecipe = null;

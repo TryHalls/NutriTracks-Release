@@ -1,0 +1,4250 @@
+/* ============================================================
+   NutriTrack Pro v2 — script.js  ·  REFACTORIZADO TOTAL
+   ─────────────────────────────────────────────────────────────
+   IA:          Google Gemini 1.5-flash (texto + visión) + caché
+   NLP Local:   Levenshtein Fuzzy · Parser de conectores · Sinónimos
+   Búsqueda:    Open Food Facts ES (timeout 4s) + Base 100+ foods
+   Persistencia: localStorage · reinicio automático al cambiar día
+   ============================================================ */
+
+'use strict';
+
+/* ──────────────────────────────────────────────────────────────
+   ⚙️  CONFIGURACIÓN DE IA  (Google Gemini 1.5 Flash)
+   ──────────────────────────────────────────────────────────────
+   Hardcode para dev (descomenta y pon tu clave):
+
+   const AI_CONFIG_OVERRIDE = {
+     apiKey:   'AIzaSy-XXXXXXXXXXXXXXXXXXXXXXXX',
+     provider: 'gemini'
+   };
+
+   Deja el objeto vacío para usar solo la config del usuario:
+*/
+const AI_CONFIG_OVERRIDE = {};
+
+/* ──────────────────────────────────────────────────────────────
+   ESTADO GLOBAL
+   ────────────────────────────────────────────────────────────── */
+const App = {
+  user: null,
+  todayLogs: [],
+  diaryLogs: [],
+  todayWater: 0,
+  currentDiaryDate: new Date(),
+  currentPage: 'home',
+  caloriesRingChart: null,
+  weightChartInst: null,
+  caloriesChartInst: null,
+  waterChartInst: null,
+  allFoods: [],
+  selectedFood: null,
+  currentMealType: null,
+  selectedAIMeal: 'breakfast',
+  aiSearchDebounce: null,
+  recognition: null,
+  lastAISourceMode: 'ai',
+  lastAIInputMode: 'text',
+  aiImage: null,
+  aiEditorIndex: 0,
+  _pendingAIFoods: null,
+  activeModal: null,
+  aiProcessing: false,
+  lastAIError: null,
+  aiFallbackMode: false,
+  isDictationActive: false,
+  searchQuery: '',
+};
+
+/* ══════════════════════════════════════════════════════════════
+   BASE DE DATOS LOCAL — 104 ALIMENTOS
+   Todos los valores son por 100g. Prioriza LATAM/España.
+   ══════════════════════════════════════════════════════════════ */
+const LOCAL_FOOD_DB = [
+  /* ── CEREALES Y HARINAS ── */
+  {
+    name: "Arroz blanco cocido", aliases: ["arroz", "arroz blanco", "arroz cocido"],
+    category: "Cereal", calories_per_100g: 130, protein_per_100g: 2.7, carbs_per_100g: 28.2, fat_per_100g: 0.3, fiber_per_100g: 0.4, sugar_per_100g: 0.1,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 158, cucharada: 13 }
+  },
+
+  {
+    name: "Arroz integral cocido", aliases: ["arroz integral"],
+    category: "Cereal", calories_per_100g: 123, protein_per_100g: 2.7, carbs_per_100g: 25.6, fat_per_100g: 1.0, fiber_per_100g: 1.8, sugar_per_100g: 0.2,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 195 }
+  },
+
+  {
+    name: "Avena en hojuelas", aliases: ["avena", "hojuelas de avena", "oats"],
+    category: "Cereal", calories_per_100g: 389, protein_per_100g: 16.9, carbs_per_100g: 66.3, fat_per_100g: 6.9, fiber_per_100g: 10.6, sugar_per_100g: 1.0,
+    defaultServingGrams: 40, defaultServingLabel: "40g", measures: { taza: 80, cucharada: 8 }
+  },
+
+  {
+    name: "Pan integral", aliases: ["pan integral", "tostada integral", "pan de molde integral"],
+    category: "Cereal", calories_per_100g: 247, protein_per_100g: 13.0, carbs_per_100g: 41.0, fat_per_100g: 4.2, fiber_per_100g: 6.0, sugar_per_100g: 5.0,
+    defaultServingGrams: 30, defaultServingLabel: "1 rebanada", defaultUnitLabel: "rebanada", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Pan blanco", aliases: ["pan blanco", "pan", "tostada", "pan de molde"],
+    category: "Cereal", calories_per_100g: 266, protein_per_100g: 8.9, carbs_per_100g: 49.0, fat_per_100g: 3.2, fiber_per_100g: 2.4, sugar_per_100g: 5.0,
+    defaultServingGrams: 30, defaultServingLabel: "1 rebanada", defaultUnitLabel: "rebanada", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Tortilla de maíz", aliases: ["tortilla de maiz", "tortilla", "tortillas"],
+    category: "Cereal", calories_per_100g: 218, protein_per_100g: 5.7, carbs_per_100g: 44.6, fat_per_100g: 2.9, fiber_per_100g: 6.3, sugar_per_100g: 0.6,
+    defaultServingGrams: 30, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 30 }
+  },
+
+  {
+    name: "Tortilla de trigo", aliases: ["tortilla de trigo", "wrap", "wraps"],
+    category: "Cereal", calories_per_100g: 310, protein_per_100g: 8.0, carbs_per_100g: 52.0, fat_per_100g: 7.5, fiber_per_100g: 3.0, sugar_per_100g: 3.0,
+    defaultServingGrams: 45, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 45 }
+  },
+
+  {
+    name: "Pasta cocida", aliases: ["pasta", "espagueti", "espaguetis", "macarrones", "fideos", "tallarines", "spaghetti"],
+    category: "Cereal", calories_per_100g: 157, protein_per_100g: 5.8, carbs_per_100g: 30.9, fat_per_100g: 0.9, fiber_per_100g: 1.8, sugar_per_100g: 0.6,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 140 }
+  },
+
+  {
+    name: "Quinoa cocida", aliases: ["quinoa", "quinua"],
+    category: "Cereal", calories_per_100g: 120, protein_per_100g: 4.4, carbs_per_100g: 21.3, fat_per_100g: 1.9, fiber_per_100g: 2.8, sugar_per_100g: 0.9,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 185 }
+  },
+
+  {
+    name: "Harina de maíz (PAN)", aliases: ["harina pan", "harina de maiz", "harina precocida", "masarepa", "masa de arepa"],
+    category: "Cereal", calories_per_100g: 365, protein_per_100g: 7.8, carbs_per_100g: 76.0, fat_per_100g: 2.5, fiber_per_100g: 5.0, sugar_per_100g: 0.5,
+    defaultServingGrams: 40, defaultServingLabel: "40g", measures: { taza: 120, cucharada: 8 }
+  },
+
+  {
+    name: "Granola", aliases: ["granola"],
+    category: "Cereal", calories_per_100g: 471, protein_per_100g: 10.0, carbs_per_100g: 64.0, fat_per_100g: 20.0, fiber_per_100g: 6.5, sugar_per_100g: 22.0,
+    defaultServingGrams: 40, defaultServingLabel: "40g", measures: { taza: 100, cucharada: 12 }
+  },
+
+  {
+    name: "Corn flakes / cereal", aliases: ["corn flakes", "cereal de maiz", "cereal", "copos de maiz"],
+    category: "Cereal", calories_per_100g: 357, protein_per_100g: 7.5, carbs_per_100g: 84.0, fat_per_100g: 0.4, fiber_per_100g: 3.0, sugar_per_100g: 8.0,
+    defaultServingGrams: 30, defaultServingLabel: "30g", measures: { taza: 28 }
+  },
+
+  {
+    name: "Galletas integrales", aliases: ["galleta integral", "galletas integrales", "galletas maria", "galleta maria"],
+    category: "Cereal", calories_per_100g: 430, protein_per_100g: 8.0, carbs_per_100g: 70.0, fat_per_100g: 13.0, fiber_per_100g: 4.5, sugar_per_100g: 20.0,
+    defaultServingGrams: 30, defaultServingLabel: "30g", measures: { unidad: 7, porcion: 30 }
+  },
+
+  {
+    name: "Palomitas de maíz", aliases: ["palomitas", "palomitas de maiz", "maiz pira", "crispetas", "cotufas", "popcorn"],
+    category: "Snack", calories_per_100g: 375, protein_per_100g: 11.0, carbs_per_100g: 74.0, fat_per_100g: 4.5, fiber_per_100g: 15.0, sugar_per_100g: 0.9,
+    defaultServingGrams: 20, defaultServingLabel: "20g", measures: { taza: 8, porcion: 20 }
+  },
+
+  {
+    name: "Chips de maíz / nachos", aliases: ["chips", "nachos", "doritos", "tostitos", "frituras de maiz", "chicharritos"],
+    category: "Snack", calories_per_100g: 486, protein_per_100g: 7.5, carbs_per_100g: 64.0, fat_per_100g: 23.0, fiber_per_100g: 4.0, sugar_per_100g: 1.5,
+    defaultServingGrams: 28, defaultServingLabel: "28g", measures: { porcion: 28 }
+  },
+
+  /* ── PROTEÍNA ANIMAL ── */
+  {
+    name: "Pechuga de pollo cocida", aliases: ["pollo", "pechuga de pollo", "pollo a la plancha", "pollo cocido", "pollo asado", "filete de pollo"],
+    category: "Proteína", calories_per_100g: 165, protein_per_100g: 31.0, carbs_per_100g: 0.0, fat_per_100g: 3.6, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 120, defaultServingLabel: "120g", measures: { filete: 120, pechuga: 200 }
+  },
+
+  {
+    name: "Pollo apanado / frito", aliases: ["pollo frito", "pollo apanado", "pollo broaster", "pollo rebozado"],
+    category: "Proteína", calories_per_100g: 246, protein_per_100g: 20.0, carbs_per_100g: 15.0, fat_per_100g: 12.0, fiber_per_100g: 0.5, sugar_per_100g: 0.3,
+    defaultServingGrams: 120, defaultServingLabel: "1 presa", defaultUnitLabel: "presa", measures: { presa: 120, pieza: 120 }
+  },
+
+  {
+    name: "Huevo entero", aliases: ["huevo", "huevos", "huevo de gallina"],
+    category: "Proteína", calories_per_100g: 143, protein_per_100g: 12.6, carbs_per_100g: 0.7, fat_per_100g: 9.5, fiber_per_100g: 0.0, sugar_per_100g: 0.4,
+    defaultServingGrams: 50, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 50, pieza: 50 }
+  },
+
+  {
+    name: "Clara de huevo", aliases: ["clara de huevo", "claras de huevo", "claras"],
+    category: "Proteína", calories_per_100g: 52, protein_per_100g: 10.9, carbs_per_100g: 0.7, fat_per_100g: 0.2, fiber_per_100g: 0.0, sugar_per_100g: 0.7,
+    defaultServingGrams: 33, defaultServingLabel: "1 clara", defaultUnitLabel: "unidad", measures: { unidad: 33, pieza: 33 }
+  },
+
+  {
+    name: "Atún en agua", aliases: ["atun", "atún", "atun en agua", "lata de atun", "atun enlatado"],
+    category: "Proteína", calories_per_100g: 116, protein_per_100g: 25.5, carbs_per_100g: 0.0, fat_per_100g: 0.8, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 120, defaultServingLabel: "1 lata", defaultUnitLabel: "lata", measures: { lata: 120 }
+  },
+
+  {
+    name: "Salmón", aliases: ["salmon", "salmón", "salmon asado", "salmon a la plancha"],
+    category: "Proteína", calories_per_100g: 208, protein_per_100g: 20.4, carbs_per_100g: 0.0, fat_per_100g: 13.4, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 120, defaultServingLabel: "120g", measures: { filete: 120 }
+  },
+
+  {
+    name: "Sardinas en lata", aliases: ["sardinas", "sardina", "sardinas en aceite", "sardinas en tomate"],
+    category: "Proteína", calories_per_100g: 208, protein_per_100g: 24.6, carbs_per_100g: 0.0, fat_per_100g: 11.5, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 100, defaultServingLabel: "1 lata", defaultUnitLabel: "lata", measures: { lata: 100 }
+  },
+
+  {
+    name: "Tilapia cocida", aliases: ["tilapia", "mojarra", "mojarra frita"],
+    category: "Proteína", calories_per_100g: 128, protein_per_100g: 26.2, carbs_per_100g: 0.0, fat_per_100g: 2.7, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 120, defaultServingLabel: "120g", measures: { filete: 120 }
+  },
+
+  {
+    name: "Camarón cocido", aliases: ["camaron", "camarón", "gambas", "langostinos", "camarones"],
+    category: "Proteína", calories_per_100g: 99, protein_per_100g: 24.0, carbs_per_100g: 0.2, fat_per_100g: 0.3, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 100, defaultServingLabel: "100g"
+  },
+
+  {
+    name: "Carne de res magra cocida", aliases: ["carne de res", "res", "carne magra", "bistec", "carne de vaca", "lomito"],
+    category: "Proteína", calories_per_100g: 217, protein_per_100g: 26.1, carbs_per_100g: 0.0, fat_per_100g: 11.8, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 120, defaultServingLabel: "120g", measures: { filete: 120 }
+  },
+
+  {
+    name: "Carne molida de res", aliases: ["carne molida", "picadillo", "carne picada", "molida de res"],
+    category: "Proteína", calories_per_100g: 215, protein_per_100g: 22.0, carbs_per_100g: 0.0, fat_per_100g: 14.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 100, defaultServingLabel: "100g"
+  },
+
+  {
+    name: "Pavo cocido", aliases: ["pavo", "pechuga de pavo", "pavo asado"],
+    category: "Proteína", calories_per_100g: 135, protein_per_100g: 29.0, carbs_per_100g: 0.0, fat_per_100g: 1.6, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { filete: 100, rebanada: 25 }
+  },
+
+  {
+    name: "Lomo de cerdo cocido", aliases: ["cerdo", "lomo de cerdo", "lomo de puerco"],
+    category: "Proteína", calories_per_100g: 196, protein_per_100g: 27.3, carbs_per_100g: 0.0, fat_per_100g: 8.2, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 120, defaultServingLabel: "120g", measures: { filete: 120 }
+  },
+
+  {
+    name: "Tocino / tocineta", aliases: ["tocino", "tocineta", "bacon", "panceta", "tocineta frita"],
+    category: "Proteína", calories_per_100g: 541, protein_per_100g: 37.0, carbs_per_100g: 1.4, fat_per_100g: 42.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 20, defaultServingLabel: "1 lonja", defaultUnitLabel: "lonja", measures: { lonja: 20, tira: 20, rebanada: 20 }
+  },
+
+  {
+    name: "Chorizo", aliases: ["chorizo", "chorizo frito", "chorizo cocido"],
+    category: "Proteína", calories_per_100g: 425, protein_per_100g: 18.0, carbs_per_100g: 2.0, fat_per_100g: 38.0, fiber_per_100g: 0.0, sugar_per_100g: 1.0,
+    defaultServingGrams: 60, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 60, pieza: 60 }
+  },
+
+  {
+    name: "Salchicha / hot dog", aliases: ["salchicha", "hot dog", "salchichas", "frankfurt", "vienesa"],
+    category: "Proteína", calories_per_100g: 290, protein_per_100g: 11.0, carbs_per_100g: 3.5, fat_per_100g: 26.0, fiber_per_100g: 0.0, sugar_per_100g: 2.0,
+    defaultServingGrams: 50, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 50, pieza: 50 }
+  },
+
+  {
+    name: "Jamón de pavo", aliases: ["jamon de pavo", "jamón de pavo", "jamon"],
+    category: "Proteína", calories_per_100g: 112, protein_per_100g: 17.0, carbs_per_100g: 3.0, fat_per_100g: 3.0, fiber_per_100g: 0.0, sugar_per_100g: 1.0,
+    defaultServingGrams: 30, defaultServingLabel: "1 rebanada", defaultUnitLabel: "rebanada", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Mortadela", aliases: ["mortadela", "mortadella"],
+    category: "Proteína", calories_per_100g: 311, protein_per_100g: 12.0, carbs_per_100g: 3.0, fat_per_100g: 28.0, fiber_per_100g: 0.0, sugar_per_100g: 1.5,
+    defaultServingGrams: 30, defaultServingLabel: "1 rebanada", defaultUnitLabel: "rebanada", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Chicharrón de cerdo", aliases: ["chicharron", "chicharrón", "chicharrones", "cuero frito"],
+    category: "Proteína", calories_per_100g: 544, protein_per_100g: 34.0, carbs_per_100g: 0.0, fat_per_100g: 45.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 30, defaultServingLabel: "30g", measures: { porcion: 30 }
+  },
+
+  {
+    name: "Proteína whey en polvo", aliases: ["whey", "proteina en polvo", "proteína en polvo", "suero proteico", "proteina whey"],
+    category: "Proteína", calories_per_100g: 400, protein_per_100g: 80.0, carbs_per_100g: 8.0, fat_per_100g: 5.0, fiber_per_100g: 0.0, sugar_per_100g: 5.0,
+    defaultServingGrams: 30, defaultServingLabel: "1 scoop", defaultUnitLabel: "scoop", measures: { scoop: 30, cucharada: 15 }
+  },
+
+  /* ── LEGUMBRES ── */
+  {
+    name: "Lentejas cocidas", aliases: ["lenteja", "lentejas"],
+    category: "Legumbre", calories_per_100g: 116, protein_per_100g: 9.0, carbs_per_100g: 20.1, fat_per_100g: 0.4, fiber_per_100g: 7.9, sugar_per_100g: 1.8,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 198, cucharada: 12 }
+  },
+
+  {
+    name: "Frijoles negros cocidos", aliases: ["frijoles", "frijol", "frijoles negros", "caraotas", "porotos negros", "habichuelas negras"],
+    category: "Legumbre", calories_per_100g: 132, protein_per_100g: 8.9, carbs_per_100g: 23.7, fat_per_100g: 0.5, fiber_per_100g: 8.7, sugar_per_100g: 0.3,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 172, cucharada: 12 }
+  },
+
+  {
+    name: "Garbanzos cocidos", aliases: ["garbanzo", "garbanzos"],
+    category: "Legumbre", calories_per_100g: 164, protein_per_100g: 8.9, carbs_per_100g: 27.4, fat_per_100g: 2.6, fiber_per_100g: 7.6, sugar_per_100g: 4.8,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 164 }
+  },
+
+  {
+    name: "Tofu firme", aliases: ["tofu", "tofu firme", "soja"],
+    category: "Legumbre", calories_per_100g: 76, protein_per_100g: 8.0, carbs_per_100g: 1.9, fat_per_100g: 4.8, fiber_per_100g: 0.3, sugar_per_100g: 0.6,
+    defaultServingGrams: 100, defaultServingLabel: "100g"
+  },
+
+  /* ── TRADICIONAL / LATAM ── */
+  {
+    name: "Arepa de maíz", aliases: ["arepa", "arepas", "arepa blanca", "arepa de maiz"],
+    category: "Tradicional", calories_per_100g: 218, protein_per_100g: 5.5, carbs_per_100g: 43.0, fat_per_100g: 2.8, fiber_per_100g: 2.5, sugar_per_100g: 1.2,
+    defaultServingGrams: 90, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 90 }
+  },
+
+  {
+    name: "Pandebono / pan de bono", aliases: ["pandebono", "pan de bono", "pan bono", "almojabana", "almojábana"],
+    category: "Tradicional", calories_per_100g: 360, protein_per_100g: 9.0, carbs_per_100g: 52.0, fat_per_100g: 13.0, fiber_per_100g: 0.5, sugar_per_100g: 4.0,
+    defaultServingGrams: 50, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 50 }
+  },
+
+  {
+    name: "Empanada de maíz", aliases: ["empanada", "empanadas", "empanada de pipian", "empanada criolla"],
+    category: "Tradicional", calories_per_100g: 250, protein_per_100g: 8.5, carbs_per_100g: 32.0, fat_per_100g: 10.0, fiber_per_100g: 1.5, sugar_per_100g: 1.0,
+    defaultServingGrams: 80, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 80 }
+  },
+
+  {
+    name: "Patacón / plátano verde frito", aliases: ["patacon", "patacón", "patacones", "tostón", "tostones", "platano verde frito"],
+    category: "Tradicional", calories_per_100g: 230, protein_per_100g: 2.0, carbs_per_100g: 38.0, fat_per_100g: 8.5, fiber_per_100g: 2.0, sugar_per_100g: 3.0,
+    defaultServingGrams: 50, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 50 }
+  },
+
+  /* ── TUBÉRCULOS ── */
+  {
+    name: "Papa cocida", aliases: ["papa", "papas", "patata", "patatas", "papa cocinada"],
+    category: "Tubérculo", calories_per_100g: 87, protein_per_100g: 1.9, carbs_per_100g: 20.1, fat_per_100g: 0.1, fiber_per_100g: 1.8, sugar_per_100g: 0.9,
+    defaultServingGrams: 150, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 150 }
+  },
+
+  {
+    name: "Camote cocido", aliases: ["camote", "batata", "boniato", "papa dulce"],
+    category: "Tubérculo", calories_per_100g: 90, protein_per_100g: 2.0, carbs_per_100g: 20.7, fat_per_100g: 0.2, fiber_per_100g: 3.3, sugar_per_100g: 6.5,
+    defaultServingGrams: 130, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 130 }
+  },
+
+  {
+    name: "Yuca cocida", aliases: ["yuca", "mandioca", "cassava", "yuca cocida"],
+    category: "Tubérculo", calories_per_100g: 160, protein_per_100g: 1.4, carbs_per_100g: 38.1, fat_per_100g: 0.3, fiber_per_100g: 1.8, sugar_per_100g: 1.7,
+    defaultServingGrams: 100, defaultServingLabel: "100g"
+  },
+
+  {
+    name: "Maíz cocido", aliases: ["maiz", "maíz", "choclo", "elote", "jojoto", "mazorca"],
+    category: "Tubérculo", calories_per_100g: 96, protein_per_100g: 3.4, carbs_per_100g: 21.0, fat_per_100g: 1.5, fiber_per_100g: 2.4, sugar_per_100g: 4.5,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 165 }
+  },
+
+  /* ── GRASAS SALUDABLES ── */
+  {
+    name: "Aguacate", aliases: ["aguacate", "palta", "avocado"],
+    category: "Grasa saludable", calories_per_100g: 160, protein_per_100g: 2.0, carbs_per_100g: 8.5, fat_per_100g: 14.7, fiber_per_100g: 6.7, sugar_per_100g: 0.7,
+    defaultServingGrams: 150, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 150, mitad: 75 }
+  },
+
+  {
+    name: "Aceite de oliva", aliases: ["aceite de oliva", "aceite", "aceite vegetal"],
+    category: "Grasa saludable", calories_per_100g: 884, protein_per_100g: 0.0, carbs_per_100g: 0.0, fat_per_100g: 100.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 14, defaultServingLabel: "1 cucharada", defaultUnitLabel: "cucharada", measures: { cucharada: 14, cucharadita: 5 }
+  },
+
+  {
+    name: "Almendras", aliases: ["almendra", "almendras"],
+    category: "Snack", calories_per_100g: 579, protein_per_100g: 21.2, carbs_per_100g: 21.6, fat_per_100g: 49.9, fiber_per_100g: 12.5, sugar_per_100g: 4.4,
+    defaultServingGrams: 28, defaultServingLabel: "1 porción", defaultUnitLabel: "porcion", measures: { porcion: 28, cucharada: 9 }
+  },
+
+  {
+    name: "Maní / cacahuate", aliases: ["mani", "maní", "cacahuate", "cacahuates", "cacahuete", "cacahuetes", "manises"],
+    category: "Snack", calories_per_100g: 567, protein_per_100g: 25.8, carbs_per_100g: 16.1, fat_per_100g: 49.2, fiber_per_100g: 8.5, sugar_per_100g: 4.7,
+    defaultServingGrams: 28, defaultServingLabel: "1 porción", defaultUnitLabel: "porcion", measures: { porcion: 28, cucharada: 16 }
+  },
+
+  {
+    name: "Nueces", aliases: ["nuez", "nueces", "walnuts"],
+    category: "Snack", calories_per_100g: 654, protein_per_100g: 15.2, carbs_per_100g: 13.7, fat_per_100g: 65.2, fiber_per_100g: 6.7, sugar_per_100g: 2.6,
+    defaultServingGrams: 28, defaultServingLabel: "1 porción", defaultUnitLabel: "porcion", measures: { porcion: 28 }
+  },
+
+  {
+    name: "Mantequilla de maní", aliases: ["mantequilla de mani", "mantequilla de cacahuate", "peanut butter", "crema de mani"],
+    category: "Snack", calories_per_100g: 588, protein_per_100g: 25.0, carbs_per_100g: 20.0, fat_per_100g: 50.0, fiber_per_100g: 6.0, sugar_per_100g: 9.0,
+    defaultServingGrams: 32, defaultServingLabel: "2 cucharadas", measures: { cucharada: 16 }
+  },
+
+  {
+    name: "Semillas de chía", aliases: ["chia", "chía", "semillas de chia"],
+    category: "Snack", calories_per_100g: 486, protein_per_100g: 16.5, carbs_per_100g: 42.0, fat_per_100g: 30.7, fiber_per_100g: 34.4, sugar_per_100g: 0.0,
+    defaultServingGrams: 15, defaultServingLabel: "1 cucharada", measures: { cucharada: 15 }
+  },
+
+  {
+    name: "Chocolate negro 70%", aliases: ["chocolate negro", "chocolate oscuro", "chocolate amargo", "cacao"],
+    category: "Snack", calories_per_100g: 598, protein_per_100g: 7.8, carbs_per_100g: 46.0, fat_per_100g: 43.0, fiber_per_100g: 10.9, sugar_per_100g: 24.0,
+    defaultServingGrams: 30, defaultServingLabel: "30g", measures: { porcion: 30, cuadrito: 5 }
+  },
+
+  /* ── LÁCTEOS ── */
+  {
+    name: "Queso fresco", aliases: ["queso fresco", "queso blanco", "queso", "quesillo", "queso de mano", "queso llanero"],
+    category: "Lácteo", calories_per_100g: 299, protein_per_100g: 18.1, carbs_per_100g: 3.7, fat_per_100g: 23.5, fiber_per_100g: 0.0, sugar_per_100g: 1.5,
+    defaultServingGrams: 30, defaultServingLabel: "1 rebanada", defaultUnitLabel: "rebanada", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Queso mozzarella", aliases: ["mozzarella", "mozarela", "queso mozarela", "queso mozzarella"],
+    category: "Lácteo", calories_per_100g: 280, protein_per_100g: 28.0, carbs_per_100g: 2.2, fat_per_100g: 17.0, fiber_per_100g: 0.0, sugar_per_100g: 1.0,
+    defaultServingGrams: 30, defaultServingLabel: "30g", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Queso cheddar", aliases: ["cheddar", "queso cheddar", "queso amarillo"],
+    category: "Lácteo", calories_per_100g: 402, protein_per_100g: 25.0, carbs_per_100g: 1.3, fat_per_100g: 33.0, fiber_per_100g: 0.0, sugar_per_100g: 0.5,
+    defaultServingGrams: 30, defaultServingLabel: "1 rebanada", defaultUnitLabel: "rebanada", measures: { rebanada: 30 }
+  },
+
+  {
+    name: "Queso parmesano", aliases: ["parmesano", "queso parmesano", "parmigiano"],
+    category: "Lácteo", calories_per_100g: 420, protein_per_100g: 38.0, carbs_per_100g: 0.0, fat_per_100g: 29.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 10, defaultServingLabel: "1 cucharada", measures: { cucharada: 10 }
+  },
+
+  {
+    name: "Yogur natural sin azúcar", aliases: ["yogur natural", "yogurt natural", "yogur", "yogurt"],
+    category: "Lácteo", calories_per_100g: 61, protein_per_100g: 3.5, carbs_per_100g: 4.7, fat_per_100g: 3.3, fiber_per_100g: 0.0, sugar_per_100g: 4.7,
+    defaultServingGrams: 125, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 125, vaso: 200, taza: 245 }
+  },
+
+  {
+    name: "Yogur griego", aliases: ["yogur griego", "yogurt griego", "yogur proteico"],
+    category: "Lácteo", calories_per_100g: 97, protein_per_100g: 10.0, carbs_per_100g: 3.6, fat_per_100g: 5.0, fiber_per_100g: 0.0, sugar_per_100g: 3.2,
+    defaultServingGrams: 150, defaultServingLabel: "150g", measures: { unidad: 150, taza: 240 }
+  },
+
+  {
+    name: "Leche semidescremada", aliases: ["leche", "leche semidescremada", "leche de vaca"],
+    category: "Lácteo", calories_per_100g: 50, protein_per_100g: 3.4, carbs_per_100g: 4.8, fat_per_100g: 1.8, fiber_per_100g: 0.0, sugar_per_100g: 5.0,
+    defaultServingGrams: 100, defaultServingLabel: "100ml", measures: { vaso: 240, taza: 240 }
+  },
+
+  {
+    name: "Mantequilla", aliases: ["mantequilla", "margarina", "butter"],
+    category: "Lácteo", calories_per_100g: 717, protein_per_100g: 0.9, carbs_per_100g: 0.1, fat_per_100g: 81.0, fiber_per_100g: 0.0, sugar_per_100g: 0.1,
+    defaultServingGrams: 10, defaultServingLabel: "1 cucharadita", measures: { cucharadita: 5, cucharada: 14 }
+  },
+
+  {
+    name: "Crema de leche", aliases: ["crema de leche", "nata", "nata para cocinar", "heavy cream"],
+    category: "Lácteo", calories_per_100g: 340, protein_per_100g: 2.1, carbs_per_100g: 2.9, fat_per_100g: 35.0, fiber_per_100g: 0.0, sugar_per_100g: 2.9,
+    defaultServingGrams: 30, defaultServingLabel: "2 cucharadas", measures: { cucharada: 15 }
+  },
+
+  {
+    name: "Arequipe / dulce de leche", aliases: ["arequipe", "dulce de leche", "manjar blanco", "cajeta", "manjar"],
+    category: "Lácteo", calories_per_100g: 328, protein_per_100g: 6.7, carbs_per_100g: 57.0, fat_per_100g: 8.0, fiber_per_100g: 0.0, sugar_per_100g: 54.0,
+    defaultServingGrams: 20, defaultServingLabel: "1 cucharada", measures: { cucharada: 20 }
+  },
+
+  /* ── FRUTAS ── */
+  {
+    name: "Plátano / banana", aliases: ["platano", "plátano", "banana", "banano", "cambur", "guineo"],
+    category: "Fruta", calories_per_100g: 89, protein_per_100g: 1.1, carbs_per_100g: 22.8, fat_per_100g: 0.3, fiber_per_100g: 2.6, sugar_per_100g: 12.2,
+    defaultServingGrams: 120, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 120 }
+  },
+
+  {
+    name: "Manzana", aliases: ["manzana", "manzanas"],
+    category: "Fruta", calories_per_100g: 52, protein_per_100g: 0.3, carbs_per_100g: 13.8, fat_per_100g: 0.2, fiber_per_100g: 2.4, sugar_per_100g: 10.4,
+    defaultServingGrams: 180, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 180 }
+  },
+
+  {
+    name: "Naranja", aliases: ["naranja", "naranjas"],
+    category: "Fruta", calories_per_100g: 47, protein_per_100g: 0.9, carbs_per_100g: 11.8, fat_per_100g: 0.1, fiber_per_100g: 2.4, sugar_per_100g: 9.4,
+    defaultServingGrams: 140, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 140 }
+  },
+
+  {
+    name: "Mango", aliases: ["mango", "mangos", "mango maduro"],
+    category: "Fruta", calories_per_100g: 60, protein_per_100g: 0.8, carbs_per_100g: 15.0, fat_per_100g: 0.4, fiber_per_100g: 1.6, sugar_per_100g: 13.7,
+    defaultServingGrams: 200, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 200, taja: 100 }
+  },
+
+  {
+    name: "Papaya", aliases: ["papaya", "lechosa", "fruta bomba", "mamón"],
+    category: "Fruta", calories_per_100g: 43, protein_per_100g: 0.5, carbs_per_100g: 11.0, fat_per_100g: 0.3, fiber_per_100g: 1.7, sugar_per_100g: 7.8,
+    defaultServingGrams: 150, defaultServingLabel: "1 taza", measures: { taza: 150 }
+  },
+
+  {
+    name: "Piña", aliases: ["piña", "pina", "ananá", "anana", "ananás"],
+    category: "Fruta", calories_per_100g: 50, protein_per_100g: 0.5, carbs_per_100g: 13.1, fat_per_100g: 0.1, fiber_per_100g: 1.4, sugar_per_100g: 9.9,
+    defaultServingGrams: 150, defaultServingLabel: "1 taza", measures: { taza: 150, rodaja: 100 }
+  },
+
+  {
+    name: "Fresa / frutilla", aliases: ["fresa", "fresas", "frutilla", "frutillas", "frutilla roja"],
+    category: "Fruta", calories_per_100g: 32, protein_per_100g: 0.7, carbs_per_100g: 7.7, fat_per_100g: 0.3, fiber_per_100g: 2.0, sugar_per_100g: 4.9,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 152 }
+  },
+
+  {
+    name: "Uvas", aliases: ["uva", "uvas", "uva roja", "uva verde"],
+    category: "Fruta", calories_per_100g: 67, protein_per_100g: 0.6, carbs_per_100g: 17.2, fat_per_100g: 0.4, fiber_per_100g: 0.9, sugar_per_100g: 16.3,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 92 }
+  },
+
+  {
+    name: "Sandía", aliases: ["sandia", "sandía", "patilla", "melón de agua"],
+    category: "Fruta", calories_per_100g: 30, protein_per_100g: 0.6, carbs_per_100g: 7.6, fat_per_100g: 0.2, fiber_per_100g: 0.4, sugar_per_100g: 6.2,
+    defaultServingGrams: 200, defaultServingLabel: "1 tajada", measures: { taza: 152, tajada: 200 }
+  },
+
+  {
+    name: "Mandarina", aliases: ["mandarina", "mandarinas", "tangerina"],
+    category: "Fruta", calories_per_100g: 53, protein_per_100g: 0.8, carbs_per_100g: 13.3, fat_per_100g: 0.3, fiber_per_100g: 1.8, sugar_per_100g: 10.6,
+    defaultServingGrams: 90, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 90 }
+  },
+
+  {
+    name: "Melocotón / durazno", aliases: ["melocoton", "melocotón", "durazno", "duraznos", "nectarina"],
+    category: "Fruta", calories_per_100g: 39, protein_per_100g: 0.9, carbs_per_100g: 9.5, fat_per_100g: 0.25, fiber_per_100g: 1.5, sugar_per_100g: 8.4,
+    defaultServingGrams: 130, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 130 }
+  },
+
+  {
+    name: "Pera", aliases: ["pera", "peras"],
+    category: "Fruta", calories_per_100g: 57, protein_per_100g: 0.4, carbs_per_100g: 15.2, fat_per_100g: 0.1, fiber_per_100g: 3.1, sugar_per_100g: 9.8,
+    defaultServingGrams: 160, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 160 }
+  },
+
+  {
+    name: "Guayaba", aliases: ["guayaba", "guava"],
+    category: "Fruta", calories_per_100g: 68, protein_per_100g: 2.6, carbs_per_100g: 14.3, fat_per_100g: 1.0, fiber_per_100g: 5.4, sugar_per_100g: 8.9,
+    defaultServingGrams: 90, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 90 }
+  },
+
+  {
+    name: "Maracuyá / parchita", aliases: ["maracuya", "maracuyá", "parchita", "passion fruit", "granadilla"],
+    category: "Fruta", calories_per_100g: 97, protein_per_100g: 2.2, carbs_per_100g: 23.4, fat_per_100g: 0.7, fiber_per_100g: 10.4, sugar_per_100g: 11.2,
+    defaultServingGrams: 50, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 50 }
+  },
+
+  {
+    name: "Mora", aliases: ["mora", "moras", "blackberry"],
+    category: "Fruta", calories_per_100g: 43, protein_per_100g: 1.4, carbs_per_100g: 9.6, fat_per_100g: 0.5, fiber_per_100g: 5.3, sugar_per_100g: 4.9,
+    defaultServingGrams: 80, defaultServingLabel: "80g", measures: { taza: 144 }
+  },
+
+  /* ── VERDURAS Y HORTALIZAS ── */
+  {
+    name: "Tomate", aliases: ["tomate", "tomates", "tomato"],
+    category: "Verdura", calories_per_100g: 18, protein_per_100g: 0.9, carbs_per_100g: 3.9, fat_per_100g: 0.2, fiber_per_100g: 1.2, sugar_per_100g: 2.6,
+    defaultServingGrams: 120, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 120 }
+  },
+
+  {
+    name: "Cebolla", aliases: ["cebolla", "cebollas", "cebolla blanca", "cebolla morada"],
+    category: "Verdura", calories_per_100g: 40, protein_per_100g: 1.1, carbs_per_100g: 9.3, fat_per_100g: 0.1, fiber_per_100g: 1.7, sugar_per_100g: 4.2,
+    defaultServingGrams: 110, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 110 }
+  },
+
+  {
+    name: "Brócoli cocido", aliases: ["brocoli", "brócoli", "brocoli cocido"],
+    category: "Verdura", calories_per_100g: 35, protein_per_100g: 2.4, carbs_per_100g: 7.2, fat_per_100g: 0.4, fiber_per_100g: 3.3, sugar_per_100g: 1.4,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 156 }
+  },
+
+  {
+    name: "Espinaca", aliases: ["espinaca", "espinacas"],
+    category: "Verdura", calories_per_100g: 23, protein_per_100g: 2.9, carbs_per_100g: 3.6, fat_per_100g: 0.4, fiber_per_100g: 2.2, sugar_per_100g: 0.4,
+    defaultServingGrams: 50, defaultServingLabel: "50g", measures: { taza: 30 }
+  },
+
+  {
+    name: "Zanahoria", aliases: ["zanahoria", "zanahorias"],
+    category: "Verdura", calories_per_100g: 41, protein_per_100g: 0.9, carbs_per_100g: 9.6, fat_per_100g: 0.2, fiber_per_100g: 2.8, sugar_per_100g: 4.7,
+    defaultServingGrams: 60, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 60 }
+  },
+
+  {
+    name: "Pepino", aliases: ["pepino", "pepinos", "cucumber"],
+    category: "Verdura", calories_per_100g: 15, protein_per_100g: 0.7, carbs_per_100g: 3.6, fat_per_100g: 0.1, fiber_per_100g: 0.5, sugar_per_100g: 1.7,
+    defaultServingGrams: 200, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 200 }
+  },
+
+  {
+    name: "Lechuga", aliases: ["lechuga", "ensalada", "lechuga romana", "lechuga criolla"],
+    category: "Verdura", calories_per_100g: 15, protein_per_100g: 1.4, carbs_per_100g: 2.9, fat_per_100g: 0.2, fiber_per_100g: 1.3, sugar_per_100g: 1.2,
+    defaultServingGrams: 50, defaultServingLabel: "50g", measures: { taza: 36 }
+  },
+
+  {
+    name: "Pimentón / pimiento", aliases: ["pimenton", "pimentón", "pimiento", "ají dulce", "capsicum", "chile dulce"],
+    category: "Verdura", calories_per_100g: 20, protein_per_100g: 0.9, carbs_per_100g: 4.6, fat_per_100g: 0.2, fiber_per_100g: 1.7, sugar_per_100g: 2.4,
+    defaultServingGrams: 120, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 120 }
+  },
+
+  {
+    name: "Champiñones", aliases: ["champiñon", "champiñones", "hongos", "setas", "mushrooms"],
+    category: "Verdura", calories_per_100g: 22, protein_per_100g: 3.1, carbs_per_100g: 3.3, fat_per_100g: 0.3, fiber_per_100g: 1.0, sugar_per_100g: 2.0,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 70 }
+  },
+
+  {
+    name: "Calabaza / zapallo", aliases: ["calabaza", "zapallo", "auyama", "ahuyama", "squash", "winter squash"],
+    category: "Verdura", calories_per_100g: 26, protein_per_100g: 1.0, carbs_per_100g: 6.5, fat_per_100g: 0.1, fiber_per_100g: 0.5, sugar_per_100g: 2.8,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 116 }
+  },
+
+  {
+    name: "Coliflor", aliases: ["coliflor", "coliflores", "cauliflower"],
+    category: "Verdura", calories_per_100g: 25, protein_per_100g: 2.0, carbs_per_100g: 5.0, fat_per_100g: 0.3, fiber_per_100g: 2.0, sugar_per_100g: 1.9,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 107 }
+  },
+
+  {
+    name: "Repollo / col", aliases: ["repollo", "col", "cabbage", "col blanca"],
+    category: "Verdura", calories_per_100g: 25, protein_per_100g: 1.3, carbs_per_100g: 5.8, fat_per_100g: 0.1, fiber_per_100g: 2.5, sugar_per_100g: 3.2,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 89 }
+  },
+
+  {
+    name: "Remolacha", aliases: ["remolacha", "betabel", "beterraga", "beet", "remolacha cocida"],
+    category: "Verdura", calories_per_100g: 44, protein_per_100g: 1.7, carbs_per_100g: 10.0, fat_per_100g: 0.2, fiber_per_100g: 2.0, sugar_per_100g: 7.6,
+    defaultServingGrams: 80, defaultServingLabel: "1 unidad", defaultUnitLabel: "unidad", measures: { unidad: 80 }
+  },
+
+  {
+    name: "Apio", aliases: ["apio", "celery", "apio españa"],
+    category: "Verdura", calories_per_100g: 16, protein_per_100g: 0.7, carbs_per_100g: 3.0, fat_per_100g: 0.2, fiber_per_100g: 1.6, sugar_per_100g: 1.3,
+    defaultServingGrams: 40, defaultServingLabel: "1 tallo", defaultUnitLabel: "tallo", measures: { tallo: 40 }
+  },
+
+  /* ── BEBIDAS ── */
+  {
+    name: "Café negro", aliases: ["cafe negro", "café negro", "cafe", "café", "tinto", "espresso", "americano"],
+    category: "Bebida", calories_per_100g: 2, protein_per_100g: 0.1, carbs_per_100g: 0.0, fat_per_100g: 0.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 240, defaultServingLabel: "1 taza", defaultUnitLabel: "taza", measures: { taza: 240, vaso: 240 }
+  },
+
+  {
+    name: "Jugo de naranja natural", aliases: ["jugo de naranja", "zumo de naranja", "jugo natural", "jugo"],
+    category: "Bebida", calories_per_100g: 45, protein_per_100g: 0.7, carbs_per_100g: 10.4, fat_per_100g: 0.2, fiber_per_100g: 0.2, sugar_per_100g: 8.4,
+    defaultServingGrams: 240, defaultServingLabel: "1 vaso", defaultUnitLabel: "vaso", measures: { vaso: 240, taza: 240 }
+  },
+
+  {
+    name: "Té sin azúcar", aliases: ["te", "té", "infusion", "infusión", "te verde", "té verde", "te negro", "té negro"],
+    category: "Bebida", calories_per_100g: 1, protein_per_100g: 0.0, carbs_per_100g: 0.2, fat_per_100g: 0.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 240, defaultServingLabel: "1 taza", defaultUnitLabel: "taza", measures: { taza: 240, vaso: 240 }
+  },
+
+  {
+    name: "Arroz con leche", aliases: ["arroz con leche", "postre de arroz"],
+    category: "Postre", calories_per_100g: 130, protein_per_100g: 3.0, carbs_per_100g: 22.0, fat_per_100g: 3.5, fiber_per_100g: 0.2, sugar_per_100g: 12.0,
+    defaultServingGrams: 150, defaultServingLabel: "1 taza", measures: { taza: 150 }
+  },
+
+  {
+    name: "Ensalada mixta", aliases: ["ensalada", "ensalada verde", "ensalada mixta", "ensalada de lechuga"],
+    category: "Verdura", calories_per_100g: 15, protein_per_100g: 1.0, carbs_per_100g: 2.5, fat_per_100g: 0.2, fiber_per_100g: 1.5, sugar_per_100g: 1.0,
+    defaultServingGrams: 100, defaultServingLabel: "100g", measures: { taza: 55 }
+  },
+
+  {
+    name: "Aceite de coco", aliases: ["aceite de coco", "coconut oil"],
+    category: "Grasa saludable", calories_per_100g: 862, protein_per_100g: 0.0, carbs_per_100g: 0.0, fat_per_100g: 100.0, fiber_per_100g: 0.0, sugar_per_100g: 0.0,
+    defaultServingGrams: 14, defaultServingLabel: "1 cucharada", defaultUnitLabel: "cucharada", measures: { cucharada: 14, cucharadita: 5 }
+  },
+
+  {
+    name: "Linaza / semillas de lino", aliases: ["linaza", "lino", "semillas de lino", "flaxseed"],
+    category: "Snack", calories_per_100g: 534, protein_per_100g: 18.3, carbs_per_100g: 28.9, fat_per_100g: 42.2, fiber_per_100g: 27.3, sugar_per_100g: 1.5,
+    defaultServingGrams: 10, defaultServingLabel: "1 cucharada", measures: { cucharada: 10 }
+  },
+
+  {
+    name: "Pimiento morrón asado", aliases: ["pimiento asado", "morrón", "pimiento rojo asado", "ajies asados"],
+    category: "Verdura", calories_per_100g: 27, protein_per_100g: 0.8, carbs_per_100g: 6.7, fat_per_100g: 0.2, fiber_per_100g: 1.9, sugar_per_100g: 4.2,
+    defaultServingGrams: 80, defaultServingLabel: "80g"
+  },
+
+  {
+    name: "Sopa de pollo casera", aliases: ["sopa de pollo", "caldo de pollo", "sopa casera"],
+    category: "Tradicional", calories_per_100g: 45, protein_per_100g: 4.0, carbs_per_100g: 3.5, fat_per_100g: 1.5, fiber_per_100g: 0.3, sugar_per_100g: 0.5,
+    defaultServingGrams: 300, defaultServingLabel: "1 plato", defaultUnitLabel: "plato", measures: { plato: 300, taza: 240 }
+  },
+];
+
+/* ══════════════════════════════════════════════════════════════
+   MAPA DE SINÓNIMOS REGIONALES
+   Normaliza términos latinoamericanos y peninsulares al nombre
+   estándar antes de buscar en la base de datos.
+   ══════════════════════════════════════════════════════════════ */
+const SYNONYMS_MAP = {
+  // Frutas regionales
+  'palta': 'aguacate',
+  'avocado': 'aguacate',
+  'banano': 'platano',
+  'banana': 'platano',
+  'cambur': 'platano',
+  'guineo': 'platano',
+  'frutilla': 'fresa',
+  'anana': 'piña',
+  'ananá': 'piña',
+  'durazno': 'melocoton',
+  'duraznos': 'melocoton',
+  'nectarina': 'melocoton',
+  'patilla': 'sandia',
+  'lechosa': 'papaya',
+  'fruta bomba': 'papaya',
+  'mamonas': 'papaya',
+  'parchita': 'maracuya',
+  'granadilla': 'maracuya',
+  'blackberry': 'mora',
+  // Verduras / tubérculos
+  'patata': 'papa',
+  'batata': 'camote',
+  'boniato': 'camote',
+  'yam': 'camote',
+  'mandioca': 'yuca',
+  'cassava': 'yuca',
+  'choclo': 'maiz',
+  'elote': 'maiz',
+  'jojoto': 'maiz',
+  'mazorca': 'maiz',
+  'ñame': 'yuca',
+  'auyama': 'calabaza',
+  'ahuyama': 'calabaza',
+  'zapallo': 'calabaza',
+  'betabel': 'remolacha',
+  'beterraga': 'remolacha',
+  'pimenton': 'pimenton',
+  'ají dulce': 'pimenton',
+  'chile dulce': 'pimenton',
+  'col': 'repollo',
+  'couve': 'repollo',
+  'hongos': 'champiñones',
+  'setas': 'champiñones',
+  // Proteínas / carnes
+  'tocineta': 'tocino',
+  'bacon': 'tocino',
+  'panceta': 'tocino',
+  'res': 'carne de res',
+  'bistec': 'carne de res',
+  'lomito': 'carne de res',
+  'molida': 'carne molida',
+  'picadillo': 'carne molida',
+  'gamba': 'camaron',
+  'gambas': 'camaron',
+  'langostino': 'camaron',
+  'langostinos': 'camaron',
+  'mojarra': 'tilapia',
+  'pabellón': 'arroz',     // aproximación
+  'quesillo': 'queso fresco',
+  'queso de mano': 'queso fresco',
+  'queso llanero': 'queso fresco',
+  'queso blanco': 'queso fresco',
+  // Lácteos / derivados
+  'arequipe': 'arequipe',
+  'manjar': 'arequipe',
+  'cajeta': 'arequipe',
+  'manjar blanco': 'arequipe',
+  'dulce de leche': 'arequipe',
+  'butter': 'mantequilla',
+  'margarina': 'mantequilla',
+  // Granos / legumbres
+  'caraotas': 'frijoles negros',
+  'carotas': 'frijoles negros',
+  'porotos': 'frijoles negros',
+  'habichuelas': 'frijoles negros',
+  'quinua': 'quinoa',
+  'soja': 'tofu',
+  // Snacks / bebidas
+  'cacahuate': 'mani',
+  'cacahuates': 'mani',
+  'cacahuete': 'mani',
+  'cacahuetes': 'mani',
+  'maiz pira': 'palomitas',
+  'crispetas': 'palomitas',
+  'cotufas': 'palomitas',
+  'pop corn': 'palomitas',
+  'popcorn': 'palomitas',
+  'doritos': 'chips de maiz',
+  'tostitos': 'chips de maiz',
+  'nachos': 'chips de maiz',
+  'tinto': 'cafe negro',
+  'espresso': 'cafe negro',
+  'americano': 'cafe negro',
+  'zumo': 'jugo de naranja',
+  // Comidas tradicionales
+  'patacon': 'plátano verde frito',
+  'patacones': 'plátano verde frito',
+  'tostones': 'plátano verde frito',
+  'toston': 'plátano verde frito',
+  'creps': 'pan blanco',    // aproximación
+  'hotcakes': 'pan blanco',    // aproximación
+  'oatmeal': 'avena',
+  'oats': 'avena',
+  'wrap': 'tortilla de trigo',
+  'wraps': 'tortilla de trigo',
+  'spaghetti': 'pasta',
+  'tallarines': 'pasta',
+  'macarron': 'pasta',
+  'macarrones': 'pasta',
+  'fideos': 'pasta',
+  'peanut butter': 'mantequilla de mani',
+  'crema de mani': 'mantequilla de mani',
+  'whey': 'proteina whey',
+  'suero proteico': 'proteina whey',
+  'frankfurt': 'salchicha',
+  'vienesa': 'salchicha',
+  'hot dog': 'salchicha',
+  'almojabana': 'pandebono',
+  'almojábana': 'pandebono',
+  'pan bono': 'pandebono',
+};
+
+/* ──────────────────────────────────────────────────────────────
+   LOCAL STORAGE HELPERS
+   ────────────────────────────────────────────────────────────── */
+const LS = {
+  set(key, value) { try { localStorage.setItem('nt_' + key, JSON.stringify(value)); } catch (e) { } },
+  get(key, fallback = null) {
+    try {
+      const v = localStorage.getItem('nt_' + key);
+      return v !== null ? JSON.parse(v) : fallback;
+    } catch (e) { return fallback; }
+  },
+  remove(key) { localStorage.removeItem('nt_' + key); }
+};
+
+/* ──────────────────────────────────────────────────────────────
+   UTILIDADES DE FECHA
+   ────────────────────────────────────────────────────────────── */
+function getLocalDateString(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function toDateStr(date) {
+  return getLocalDateString(date);
+}
+
+function formatDateLabel(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const today = toDateStr(new Date());
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yest = toDateStr(yesterday);
+
+  const ds = toDateStr(d);
+  if (ds === today) return 'Hoy';
+  if (ds === yest) return 'Ayer';
+  return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+function greetingByHour() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Buenos días ☀️';
+  if (h < 19) return 'Buenas tardes 🌤️';
+  return 'Buenas noches 🌙';
+}
+
+/* ──────────────────────────────────────────────────────────────
+   DETECCIÓN DE CAMBIO DE DÍA (reinicio automático de contadores)
+   ────────────────────────────────────────────────────────────── */
+function checkAndResetForNewDay() {
+  const lastDate = LS.get('last_active_date', null);
+  const todayStr = toDateStr(new Date());
+  if (lastDate && lastDate !== todayStr) {
+    // Los registros de comida y agua son por fecha → se reinician solos.
+    // Actualizamos App.todayWater para reflejar el nuevo día.
+    App.todayWater = 0;
+    console.info('[App] ✦ Nuevo día detectado. Contadores reiniciados.');
+  }
+  LS.set('last_active_date', todayStr);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   TOASTS
+   ────────────────────────────────────────────────────────────── */
+function showToast(message, type = 'success', icon = '') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', info: 'ℹ️', ai: '✦', offline: '✦', warning: '⚠️' };
+
+  /* ── P0: Prevención XSS — construir DOM sin innerHTML con datos del usuario ── */
+  const iconSpan = document.createElement('span');
+  iconSpan.textContent = icon || icons[type] || '✅';
+  const textNode = document.createTextNode(' ' + String(message || ''));
+  toast.appendChild(iconSpan);
+  toast.appendChild(textNode);
+
+  if (type === 'offline' || type === 'warning') {
+    toast.style.background = 'linear-gradient(135deg, #f59e0b, #fde68a)';
+    toast.style.color = '#78350f';
+    toast.style.border = '1px solid rgba(146,64,14,.25)';
+  }
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3400);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   CÁLCULOS NUTRICIONALES (Harris-Benedict)
+   ────────────────────────────────────────────────────────────── */
+function calculateBMR(gender, age, weight, height) {
+  return gender === 'male'
+    ? 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
+    : 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age);
+}
+function calculateTDEE(bmr, activity) {
+  const m = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+  return bmr * (m[activity] || 1.55);
+}
+function calculateDailyCalories(tdee, goal) {
+  const adj = { lose_weight: -500, maintain: 0, gain_muscle: +300 };
+  return Math.round(tdee + (adj[goal] || 0));
+}
+function calculateMacros(dailyCal, goal) {
+  const r = {
+    lose_weight: { protein: .35, carbs: .40, fat: .25 },
+    maintain: { protein: .30, carbs: .45, fat: .25 },
+    gain_muscle: { protein: .35, carbs: .45, fat: .20 }
+  }[goal] || { protein: .30, carbs: .45, fat: .25 };
+  return {
+    protein: Math.round((dailyCal * r.protein) / 4),
+    carbs: Math.round((dailyCal * r.carbs) / 4),
+    fat: Math.round((dailyCal * r.fat) / 9)
+  };
+}
+function goalLabel(goal) {
+  return { lose_weight: 'Perder peso', maintain: 'Mantener peso', gain_muscle: 'Ganar músculo' }[goal] || goal;
+}
+function activityLabel(level) {
+  return { sedentary: 'Sedentario', light: 'Ligero', moderate: 'Moderado', active: 'Activo', very_active: 'Muy activo' }[level] || level;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   INICIALIZACIÓN
+   ────────────────────────────────────────────────────────────── */
+async function initApp() {
+  injectWaterPage();
+  checkAndResetForNewDay();
+  App.user = LS.get('user');
+
+  if (!App.user) {
+    document.getElementById('onboarding-screen').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  } else {
+    document.getElementById('onboarding-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    setGreeting();
+    refreshDashboard();
+    loadAIConfig();
+  }
+}
+
+function setGreeting() {
+  if (!App.user) return;
+  const firstName = (App.user.name || 'Usuario').split(' ')[0];
+  const el = document.getElementById('greeting-text');
+  const elDate = document.getElementById('greeting-date');
+  if (el) el.textContent = `${greetingByHour()}, ${firstName}`;
+  if (elDate) elDate.textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function handleURLParams() {
+  const p = new URLSearchParams(window.location.search).get('page');
+  if (p && ['diary', 'water', 'progress', 'profile'].includes(p)) {
+    setTimeout(() => navigateTo(p), 100);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await initApp();
+  handleURLParams();
+
+  /* ── Contador de caracteres del textarea ── */
+  const ta = document.getElementById('ai-food-input');
+  if (ta) {
+    ta.addEventListener('input', () => {
+      const count = document.getElementById('ai-char-count');
+      if (count) count.textContent = `${ta.value.length}/500`;
+    });
+  }
+
+  /* ── P2/P9: Migración de onclick inline → addEventListener ── */
+
+  /* Bottom navigation */
+  document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => navigateTo(btn.dataset.page));
+  });
+
+  /* Botón de refresh del AI Coach Insight */
+  const aiRefreshBtn = document.querySelector('.ai-insight-refresh');
+  if (aiRefreshBtn) aiRefreshBtn.addEventListener('click', () => refreshAIInsight());
+
+  /* Botón principal "Analizar con IA" */
+  const analyzeBtn = document.getElementById('btn-ai-analyze');
+  if (analyzeBtn) analyzeBtn.addEventListener('click', () => analyzeWithAI());
+
+  /* Botón guardar configuración de IA */
+  const saveAIBtn = document.querySelector('.ai-config-card .btn-primary');
+  if (saveAIBtn) saveAIBtn.addEventListener('click', () => saveAIConfig());
+
+  setupAIEditorListeners();
+  renderAIImagePreview();
+});
+
+/* ── P1: El registro del SW se realiza aquí (única instancia). index.html no
+       debe registrarlo de nuevo para evitar duplicados. ── */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { });
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────
+   NAVEGACIÓN
+   ────────────────────────────────────────────────────────────── */
+function navigateTo(page) {
+  if (typeof closeScannerModal === 'function') closeScannerModal();
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById(`page-${page}`);
+  if (target) target.classList.add('active');
+
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.page === page);
+  });
+  App.currentPage = page;
+
+  const actionBtn = document.getElementById('topbar-action-btn');
+  const iconPlus = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+  if (page === 'diary') {
+    actionBtn.innerHTML = iconPlus;
+    actionBtn.onclick = () => openAddFood(null, App.selectedAIMeal || 'breakfast');
+  } else if (page === 'progress') {
+    actionBtn.innerHTML = '📝';
+    actionBtn.onclick = () => document.getElementById('log-weight-input')?.focus();
+  } else {
+    actionBtn.innerHTML = iconPlus;
+    actionBtn.onclick = () => navigateTo('diary');
+  }
+
+  if (page === 'home') refreshDashboard();
+  if (page === 'diary') refreshDiary();
+  if (page === 'progress') refreshProgress();
+  if (page === 'water') refreshWaterPage();
+  if (page === 'profile') refreshProfile();
+}
+
+/* ──────────────────────────────────────────────────────────────
+   WATER PAGE (inyectada dinámicamente)
+   ────────────────────────────────────────────────────────────── */
+function injectWaterPage() {
+  if (document.getElementById('page-water')) return;
+  const wp = document.createElement('main');
+  wp.className = 'page';
+  wp.id = 'page-water';
+  wp.innerHTML = `
+    <div class="water-hero">
+      <div class="water-progress-circle">
+        <svg width="140" height="140" viewBox="0 0 140 140">
+          <circle cx="70" cy="70" r="58" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="10"/>
+          <circle cx="70" cy="70" r="58" fill="none" stroke="white" stroke-width="10"
+            stroke-dasharray="364" stroke-dashoffset="364" stroke-linecap="round"
+            id="water-progress-arc" style="transition:stroke-dashoffset 0.6s ease"/>
+        </svg>
+        <div class="water-circle-text" style="color:white">
+          <div class="water-glasses-big" id="wp-glasses">0</div>
+          <div class="water-of">vasos</div>
+        </div>
+      </div>
+      <div class="water-hero-title" id="wp-title">¡Hidrátate!</div>
+      <div class="water-hero-sub"   id="wp-sub">Meta: 8 vasos diarios</div>
+    </div>
+    <div class="water-grid" id="water-big-grid"></div>
+    <div class="water-actions">
+      <button class="btn-water-add"    onclick="addWater()">+ Agregar vaso</button>
+      <button class="btn-water-remove" onclick="removeWater()">− Quitar vaso</button>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">💧 Hidratación — últimos 7 días</div>
+      <div class="chart-card-sub">Promedio diario de vasos</div>
+      <div class="chart-container"><canvas id="water-chart"></canvas></div>
+    </div>
+  `;
+  const appEl = document.getElementById('app');
+  appEl.insertBefore(wp, document.querySelector('.bottom-nav'));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ██████████████  NLP & FUZZY MATCHING  ██████████████████████
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Distancia de Levenshtein entre dos cadenas normalizadas.
+ */
+function levenshteinDistance(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Similitud [0,1] entre dos cadenas (1 = idénticas).
+ */
+function fuzzyScore(a, b) {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return (maxLen - levenshteinDistance(a, b)) / maxLen;
+}
+
+/**
+ * Normaliza texto para búsqueda: minúsculas, sin acentos, sin especiales.
+ */
+function normalizeSearchText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/1\/2/g, ' medio ')
+    .replace(/1\/4/g, ' cuarto ')
+    .replace(/3\/4/g, ' tres cuartos ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Aplica el mapa de sinónimos para estandarizar términos regionales.
+ * Retorna el texto con los sinónimos reemplazados.
+ */
+function applySynonyms(text) {
+  let result = text;
+  // Ordenamos por longitud desc para que términos largos tengan prioridad
+  const entries = Object.entries(SYNONYMS_MAP).sort((a, b) => b[0].length - a[0].length);
+  for (const [synonym, standard] of entries) {
+    const normSyn = normalizeSearchText(synonym);
+    const normStd = normalizeSearchText(standard);
+    if (result.includes(normSyn)) {
+      result = result.replace(new RegExp(`\\b${escapeRegExp(normSyn)}\\b`, 'g'), normStd);
+    }
+  }
+  return result;
+}
+
+/**
+ * Divide la frase por conectores: "y", "con", "+", ",".
+ * "2 huevos y tocino con arepa" → ["2 huevos", "tocino", "arepa"]
+ */
+function splitByConnectors(text) {
+  return text
+    .split(/\s+y\s+|\s+con\s+|,\s*|\+\s*/i)
+    .map(t => t.trim())
+    .filter(Boolean);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   CONSTANTES DE PARSEO DE CANTIDADES
+   ────────────────────────────────────────────────────────────── */
+const SEARCH_STOP_WORDS = new Set([
+  'a', 'al', 'algo', 'con', 'de', 'del', 'desayune', 'desayuné', 'el', 'en', 'esta', 'esto', 'fue', 'la', 'las', 'lo', 'los',
+  'me', 'mi', 'mis', 'para', 'por', 'que', 'sin', 'su', 'sus', 'una', 'un', 'uno', 'unos', 'unas', 'y', 'yo', 'comi', 'comí',
+  'cene', 'cené', 'almorce', 'almorcé', 'tome', 'tomé', 'bebi', 'bebí', 'despues', 'después'
+]);
+
+const NUMBER_WORDS = {
+  'media docena': 6, 'docena': 12, 'tres cuartos': 0.75, 'medio': 0.5, 'media': 0.5, 'cuarto': 0.25,
+  'un': 1, 'una': 1, 'uno': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
+  'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10
+};
+
+const UNIT_ALIASES = {
+  kg: 'kg', kilo: 'kg', kilos: 'kg',
+  g: 'g', gr: 'g', grs: 'g', gramo: 'g', gramos: 'g',
+  ml: 'ml', mililitro: 'ml', mililitros: 'ml',
+  l: 'l', lt: 'l', litro: 'l', litros: 'l',
+  taza: 'taza', tazas: 'taza',
+  vaso: 'vaso', vasos: 'vaso',
+  cucharada: 'cucharada', cucharadas: 'cucharada',
+  cucharadita: 'cucharadita', cucharaditas: 'cucharadita',
+  rebanada: 'rebanada', rebanadas: 'rebanada',
+  lonja: 'lonja', lonjas: 'lonja', tira: 'lonja', tiras: 'lonja',
+  unidad: 'unidad', unidades: 'unidad',
+  pieza: 'pieza', piezas: 'pieza',
+  lata: 'lata', latas: 'lata',
+  filete: 'filete', filetes: 'filete',
+  porcion: 'porcion', porciones: 'porcion',
+  rodaja: 'rodaja', rodajas: 'rodaja',
+  presa: 'presa', presas: 'presa',
+  scoop: 'scoop', scoops: 'scoop',
+  tallo: 'tallo', tallos: 'tallo',
+  tajada: 'tajada', tajadas: 'tajada',
+  mitad: 'mitad',
+};
+
+const DEFAULT_UNIT_GRAMS = {
+  taza: 240, vaso: 240, cucharada: 15, cucharadita: 5,
+  rebanada: 30, lonja: 20, unidad: 100, pieza: 100,
+  lata: 120, filete: 120, porcion: 100, rodaja: 20,
+  presa: 120, scoop: 30, tallo: 40, tajada: 150, mitad: 75,
+};
+
+const QUANTITY_PATTERN = 'media docena|docena|tres cuartos|medio|media|cuarto|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+(?:[\\.,]\\d+)?';
+const UNIT_PATTERN = 'kg|kilos?|g|grs?|gramos?|ml|mililitros?|l|lt|litros?|tazas?|vasos?|cucharadas?|cucharaditas?|rebanadas?|lonjas?|tiras?|unidades?|piezas?|latas?|filetes?|porciones?|rodajas?|presas?|scoops?|tallos?|tajadas?|mitad';
+
+function normalizeText(text) {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function prettyQty(value) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
+function parseQuantityValue(raw) {
+  const token = normalizeSearchText(raw);
+  if (NUMBER_WORDS[token] != null) return NUMBER_WORDS[token];
+  const num = parseFloat(token.replace(',', '.'));
+  return Number.isFinite(num) ? num : 1;
+}
+
+function canonicalUnit(raw) {
+  return UNIT_ALIASES[normalizeSearchText(raw)] || '';
+}
+
+function convertEstimate(food, quantityRaw, unitRaw) {
+  const quantity = Math.max(0.25, parseQuantityValue(quantityRaw));
+  const unit = canonicalUnit(unitRaw);
+  let grams = Math.round(food.defaultServingGrams || 100);
+  let label = food.defaultServingLabel || `${grams}g`;
+
+  if (unit === 'kg') { grams = quantity * 1000; label = `${prettyQty(quantity)}kg`; }
+  else if (unit === 'g') { grams = quantity; label = `${prettyQty(quantity)}g`; }
+  else if (unit === 'ml') { grams = quantity; label = `${prettyQty(quantity)}ml`; }
+  else if (unit === 'l') { grams = quantity * 1000; label = `${prettyQty(quantity)}L`; }
+  else if (unit && food.measures?.[unit]) {
+    grams = quantity * food.measures[unit];
+    label = `${prettyQty(quantity)} ${quantity === 1 ? unit : unit + 's'}`;
+  } else if (unit && DEFAULT_UNIT_GRAMS[unit]) {
+    grams = quantity * DEFAULT_UNIT_GRAMS[unit];
+    label = `${prettyQty(quantity)} ${unit}`;
+  } else if (!unit && food.defaultUnitLabel && food.defaultServingGrams) {
+    grams = quantity * food.defaultServingGrams;
+    label = `${prettyQty(quantity)} ${food.defaultUnitLabel}`;
+  } else {
+    grams = quantity * (food.defaultServingGrams || 100);
+    label = `${Math.max(1, Math.round(grams))}g`;
+  }
+  return { grams: Math.max(1, Math.round(grams)), label };
+}
+
+function getFoodAliases(food) {
+  return Array.from(new Set([food.name, ...(food.aliases || [])].map(normalizeSearchText).filter(Boolean)));
+}
+
+function estimateFoodPortion(normalizedText, food, totalMatches = 1) {
+  const aliases = getFoodAliases(food).sort((a, b) => b.length - a.length);
+
+  for (const alias of aliases) {
+    const ap = alias.split(' ').map(escapeRegExp).join('\\s+');
+    const beforeRx = new RegExp(`(?:^|\\b)(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})?\\s*(?:de\\s+)?${ap}(?=\\b|$)`);
+    const afterRx = new RegExp(`${ap}\\s*(?:de\\s+)?(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})?(?=\\b|$)`);
+    const bm = beforeRx.exec(normalizedText);
+    if (bm) return convertEstimate(food, bm[1], bm[2]);
+    const am = afterRx.exec(normalizedText);
+    if (am) return convertEstimate(food, am[1], am[2]);
+  }
+
+  if (totalMatches === 1) {
+    const gm = new RegExp(`(?:^|\\b)(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})(?=\\b|$)`).exec(normalizedText);
+    if (gm) return convertEstimate(food, gm[1], gm[2]);
+  }
+
+  return {
+    grams: Math.max(1, Math.round(food.defaultServingGrams || 100)),
+    label: food.defaultServingLabel || `${Math.max(1, Math.round(food.defaultServingGrams || 100))}g`
+  };
+}
+
+function buildAIFoodFromLocalFood(food, estimate) {
+  const ratio = estimate.grams / 100;
+  return {
+    alimento: food.name,
+    cantidad_estimada: estimate.label || `${estimate.grams}g`,
+    gramos_estimados: estimate.grams,
+    kcal: Math.round(food.calories_per_100g * ratio),
+    proteinas: parseFloat((food.protein_per_100g * ratio).toFixed(1)),
+    carbohidratos: parseFloat((food.carbs_per_100g * ratio).toFixed(1)),
+    grasas: parseFloat((food.fat_per_100g * ratio).toFixed(1)),
+  };
+}
+
+/**
+ * Busca menciones de alimentos en el texto con:
+ *   1. Exact / substring match
+ *   2. Aplicación de sinónimos regionales
+ *   3. Fuzzy matching (Levenshtein) con umbral > 75%
+ */
+function findLocalFoodMentions(text) {
+  // Aplicar sinónimos antes de buscar
+  const normalized = applySynonyms(normalizeSearchText(text));
+  if (!normalized) return [];
+
+  const candidates = [];
+
+  LOCAL_FOOD_DB.forEach(food => {
+    getFoodAliases(food).forEach(alias => {
+      // --- Match exacto / substring ---
+      const ap = alias.split(' ').map(escapeRegExp).join('\\s+');
+      const rx = new RegExp(`(?:^|\\b)${ap}(?=\\b|$)`, 'g');
+      let match;
+      while ((match = rx.exec(normalized))) {
+        candidates.push({ food, alias, start: match.index, end: match.index + match[0].length, len: alias.length, score: 1.0 });
+      }
+    });
+
+    // --- Fuzzy matching: dividir texto en tokens y comparar con alias ---
+    const tokens = normalized.split(' ').filter(t => t.length > 3);
+    tokens.forEach((token, idx) => {
+      getFoodAliases(food).forEach(alias => {
+        // Solo considerar alias de 1 palabra para fuzzy individual
+        if (alias.includes(' ')) return;
+        const sim = fuzzyScore(token, alias);
+        if (sim > 0.75 && sim < 1.0) { // < 1.0 para no duplicar exactos
+          // Calcular posición aproximada
+          const pos = normalized.indexOf(token);
+          if (pos >= 0) {
+            candidates.push({
+              food, alias: token, start: pos, end: pos + token.length,
+              len: alias.length, score: sim
+            });
+          }
+        }
+      });
+    });
+  });
+
+  // Ordenar: mayor longitud de alias primero, luego mayor score
+  candidates.sort((a, b) => b.len - a.len || b.score - a.score || a.start - b.start);
+
+  const selected = [];
+  candidates.forEach(candidate => {
+    const overlaps = selected.some(item => !(candidate.end <= item.start || candidate.start >= item.end));
+    const sameFood = selected.some(item => item.food.name === candidate.food.name);
+    if (!overlaps && !sameFood) selected.push(candidate);
+  });
+
+  return selected.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Analiza frases complejas ("2 huevos y arepa con queso y café") usando:
+ *   1. Parser de conectores (split por y/con/,/+)
+ *   2. Búsqueda por mentions en cada sub-frase
+ *   3. Si no hay matches en sub-frase, busca en el texto completo
+ */
+function smartOfflineAnalyzeText(text) {
+  const normalized = normalizeSearchText(text);
+  if (!normalized) return null;
+
+  // Intento 1: analizar texto completo
+  const mentionsFull = findLocalFoodMentions(normalized);
+
+  // Intento 2: dividir por conectores y analizar cada fragmento
+  const segments = splitByConnectors(normalized);
+  const mentionsSegmented = [];
+  const seenFoods = new Set();
+
+  segments.forEach(seg => {
+    const segMentions = findLocalFoodMentions(seg);
+    segMentions.forEach(m => {
+      if (!seenFoods.has(m.food.name)) {
+        seenFoods.add(m.food.name);
+        // Estimar porción en el segmento (más preciso)
+        const estimate = estimateFoodPortion(
+          applySynonyms(normalizeSearchText(seg)),
+          m.food, segMentions.length
+        );
+        mentionsSegmented.push({ food: m.food, estimate });
+      }
+    });
+  });
+
+  // Si el análisis segmentado encontró más alimentos, usarlo
+  const useSegmented = mentionsSegmented.length >= mentionsFull.length;
+
+  if (useSegmented && mentionsSegmented.length > 0) {
+    return {
+      alimentos: mentionsSegmented.map(({ food, estimate }) =>
+        buildAIFoodFromLocalFood(food, estimate)
+      )
+    };
+  }
+
+  if (mentionsFull.length > 0) {
+    return {
+      alimentos: mentionsFull.map(m =>
+        buildAIFoodFromLocalFood(m.food, estimateFoodPortion(normalized, m.food, mentionsFull.length))
+      )
+    };
+  }
+
+  return null;
+}
+
+function extractFoodKeywords(text) {
+  const normalized = normalizeSearchText(text);
+  const tokens = normalized.split(' ').filter(t => t.length > 2 && !SEARCH_STOP_WORDS.has(t));
+  return tokens.slice(0, 4).join(' ') || normalized.split(' ').slice(0, 2).join(' ');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ████████████████   IA CORE   ██████████████████████████████
+   ══════════════════════════════════════════════════════════════ */
+
+function getAIConfig() {
+  if (AI_CONFIG_OVERRIDE.apiKey) return AI_CONFIG_OVERRIDE;
+  const saved = LS.get('ai_config', null);
+  return saved && saved.apiKey ? saved : null;
+}
+
+function loadAIConfig() {
+  const cfg = getAIConfig();
+  const keyEl = document.getElementById('ai-api-key-input');
+  /* P0: provider siempre es gemini, no es necesario leer el select eliminado */
+  if (!cfg) { updateAIStatusBar(false); return; }
+  if (keyEl && cfg.apiKey) keyEl.value = cfg.apiKey;
+  updateAIStatusBar(!!cfg.apiKey);
+}
+
+function saveAIConfig() {
+  const key = document.getElementById('ai-api-key-input')?.value.trim();
+  /* P0: proveedor fijo a gemini — se elimina referencia a openai */
+  if (!key) { showToast('Ingresa una API Key válida', 'error'); return; }
+  /* P1: No loguear la key en consola */
+  LS.set('ai_config', { apiKey: key, provider: 'gemini' });
+  updateAIStatusBar(true);
+  showToast('✦ Configuración de Gemini guardada', 'ai', '✦');
+}
+
+function updateAIStatusBar(hasKey) {
+  const icon = document.getElementById('ai-status-icon');
+  const text = document.getElementById('ai-status-text');
+  if (!icon || !text) return;
+  if (hasKey) {
+    icon.style.cssText = '';
+    text.textContent = 'IA activa · Fallback: Inteligencia Local + Open Food Facts ES';
+  } else {
+    icon.style.cssText = 'opacity:.95';
+    text.textContent = 'Sin API Key · Inteligencia Local + Open Food Facts ES';
+  }
+}
+
+function round1(value) {
+  return parseFloat((Number(value) || 0).toFixed(1));
+}
+
+function sanitizeAIFoodItem(a = {}) {
+  const grams = Math.max(0, Math.round(Number(a.gramos_estimados) || 0));
+  const qty = String(a.cantidad_estimada || (grams ? `${grams}g` : 'Cantidad por confirmar'));
+  return {
+    alimento: String(a.alimento || 'Alimento desconocido').trim() || 'Alimento desconocido',
+    cantidad_estimada: qty,
+    gramos_estimados: grams,
+    kcal: Math.max(0, Math.round(Number(a.kcal) || 0)),
+    proteinas: round1(a.proteinas),
+    carbohidratos: round1(a.carbohidratos),
+    grasas: round1(a.grasas),
+  };
+}
+
+function getAISourceTitle() {
+  const prefix = App.lastAIInputMode === 'image' || App.lastAIInputMode === 'mixed' ? '📷 ' : '✦ ';
+  if (App.lastAISourceMode === 'offline') return `${prefix}Detectado por Inteligencia Local`;
+  if (App.lastAISourceMode === 'hybrid') return `${prefix}Detectado por Base Local + OFF`;
+  return `${prefix}Detectado por IA`;
+}
+
+function getSelectedAIMealLabel() {
+  return {
+    breakfast: 'Desayuno',
+    lunch: 'Almuerzo',
+    dinner: 'Cena',
+    snack: 'Snack'
+  }[getSelectedAIMeal()] || 'Comida';
+}
+
+function makeAIResultQuantityLabel(food) {
+  if (!food) return 'Cantidad por confirmar';
+  if (food.cantidad_estimada && /\d/.test(food.cantidad_estimada)) return food.cantidad_estimada;
+  if (food.gramos_estimados > 0) return `${food.gramos_estimados}g`;
+  return 'Cantidad por confirmar';
+}
+
+function getAIFallbackSearchSeed(text = '') {
+  const clean = String(text || '').trim();
+  if (!clean) return '';
+  return extractFoodKeywords(clean) || clean.split(' ').slice(0, 3).join(' ');
+}
+
+function openManualFoodRegistration(seedText = '') {
+  openAddFood(null, App.selectedAIMeal || 'breakfast');
+  const seed = getAIFallbackSearchSeed(seedText);
+  if (!seed) return;
+  setTimeout(() => {
+    const input = document.getElementById('food-search-input');
+    if (!input) return;
+    input.value = seed;
+    searchFood(seed);
+  }, 320);
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromDataURL(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo abrir la imagen seleccionada'));
+    img.src = dataUrl;
+  });
+}
+
+function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) {
+        reject(new Error('No se pudo optimizar la imagen'));
+        return;
+      }
+      resolve(blob);
+    }, type, quality);
+  });
+}
+
+async function processImageForAI(file) {
+  if (!file || !String(file.type || '').startsWith('image/')) {
+    throw new Error('Selecciona una imagen válida');
+  }
+
+  const dataUrl = await fileToDataURL(file);
+  const img = await loadImageFromDataURL(dataUrl);
+  const longestSide = Math.max(img.width, img.height);
+  const scale = longestSide > 1024 ? 1024 / longestSide : 1;
+  const targetWidth = Math.max(1, Math.round(img.width * scale));
+  const targetHeight = Math.max(1, Math.round(img.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) throw new Error('Canvas no disponible en este navegador');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+  const jpegBlob = await canvasToBlob(canvas, 'image/jpeg', 0.8);
+  const jpegDataUrl = await blobToDataURL(jpegBlob);
+  const base64 = jpegDataUrl.split(',')[1] || '';
+  const previewUrl = URL.createObjectURL(jpegBlob);
+
+  return {
+    base64,
+    mimeType: 'image/jpeg',
+    previewUrl,
+    name: file.name || 'foto-comida.jpg',
+    width: targetWidth,
+    height: targetHeight,
+    sizeKB: Math.round(jpegBlob.size / 1024),
+  };
+}
+
+function triggerAIImagePicker() {
+  const input = document.getElementById('ai-image-input');
+  if (!input) return;
+  input.value = '';
+  input.click();
+}
+
+function renderAIImagePreview() {
+  const wrap = document.getElementById('ai-image-preview');
+  const img = document.getElementById('ai-image-preview-img');
+  const meta = document.getElementById('ai-image-preview-meta');
+  const btn = document.getElementById('ai-camera-btn');
+
+  if (!wrap || !img || !meta || !btn) return;
+
+  if (!App.aiImage) {
+    wrap.classList.add('hidden');
+    img.removeAttribute('src');
+    meta.textContent = 'JPEG optimizado';
+    btn.classList.remove('has-image');
+    return;
+  }
+
+  img.src = App.aiImage.previewUrl;
+  meta.textContent = `${App.aiImage.width}×${App.aiImage.height}px · ${App.aiImage.sizeKB} KB · JPEG 0.8`;
+  wrap.classList.remove('hidden');
+  btn.classList.add('has-image');
+}
+
+function clearAIImageSelection(silent = false) {
+  if (App.aiImage?.previewUrl) {
+    URL.revokeObjectURL(App.aiImage.previewUrl);
+  }
+  App.aiImage = null;
+  const input = document.getElementById('ai-image-input');
+  if (input) input.value = '';
+  renderAIImagePreview();
+  if (!silent) showToast('Foto eliminada', 'info', '📷');
+}
+
+async function handleAIImageSelection(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+
+  try {
+    if (App.aiImage?.previewUrl) {
+      URL.revokeObjectURL(App.aiImage.previewUrl);
+    }
+    App.aiImage = await processImageForAI(file);
+    renderAIImagePreview();
+    showToast('Foto lista para analizar', 'info', '📷');
+  } catch (err) {
+    console.error('[AI Vision] Error al preparar imagen:', err);
+    clearAIImageSelection(true);
+    showToast(err.message || 'No pude procesar la imagen seleccionada', 'error');
+  }
+}
+
+function renderAIResultsLoading(mode = 'text') {
+  const resultsEl = document.getElementById('ai-results');
+  const listEl = document.getElementById('ai-results-list');
+  const totalEl = document.getElementById('ai-results-total');
+  const titleEl = resultsEl?.querySelector('.ai-results-title');
+  const confirmBtn = resultsEl?.querySelector('.btn-ai-confirm');
+  if (!resultsEl || !listEl || !totalEl || !confirmBtn) return;
+
+  if (titleEl) titleEl.textContent = mode === 'image' ? '📷 Analizando imagen…' : '✦ Analizando con IA…';
+  listEl.innerHTML = Array(3).fill(`
+    <div class="ai-skeleton-row">
+      <div style="flex:1;min-width:0;padding-right:12px">
+        <div class="skeleton" style="height:14px;width:62%;margin-bottom:8px"></div>
+        <div class="skeleton" style="height:11px;width:38%"></div>
+      </div>
+      <div style="width:96px">
+        <div class="skeleton" style="height:14px;width:80%;margin-left:auto;margin-bottom:8px"></div>
+        <div class="skeleton" style="height:11px;width:100%"></div>
+      </div>
+    </div>`).join('');
+  totalEl.innerHTML = `
+    <div class="skeleton" style="height:54px;flex:1"></div>
+    <div class="skeleton" style="height:54px;flex:1"></div>`;
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = mode === 'image' ? 'Procesando foto…' : 'Procesando…';
+  resultsEl.style.display = 'block';
+}
+
+function updateAIResultsSummary() {
+  const alimentos = App._pendingAIFoods;
+  const resultsEl = document.getElementById('ai-results');
+  const listEl = document.getElementById('ai-results-list');
+  const totalEl = document.getElementById('ai-results-total');
+  const titleEl = resultsEl?.querySelector('.ai-results-title');
+  const confirmBtn = resultsEl?.querySelector('.btn-ai-confirm');
+  if (!resultsEl || !listEl || !totalEl || !confirmBtn) return;
+
+  if (!alimentos?.length) {
+    resultsEl.style.display = 'none';
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = getAISourceTitle();
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = '✎ Revisar antes de guardar';
+
+  listEl.innerHTML = '';
+  alimentos.forEach(a => {
+    const item = document.createElement('div');
+    item.className = 'ai-result-item';
+    item.innerHTML = `
+      <div class="ai-result-left">
+        <div class="ai-result-name">${escapeHtml(a.alimento)}</div>
+        <div class="ai-result-qty">${escapeHtml(makeAIResultQuantityLabel(a))}</div>
+      </div>
+      <div class="ai-result-macros">
+        <div class="ai-result-kcal">${Math.round(a.kcal)} kcal</div>
+        <div class="ai-result-prot">${round1(a.proteinas)}P · ${round1(a.carbohidratos)}C · ${round1(a.grasas)}G</div>
+      </div>`;
+    listEl.appendChild(item);
+  });
+
+  const totals = alimentos.reduce(
+    (acc, a) => ({ kcal: acc.kcal + (Number(a.kcal) || 0), prot: acc.prot + (Number(a.proteinas) || 0), carbs: acc.carbs + (Number(a.carbohidratos) || 0), fat: acc.fat + (Number(a.grasas) || 0) }),
+    { kcal: 0, prot: 0, carbs: 0, fat: 0 }
+  );
+
+  totalEl.innerHTML = `
+    <div class="ai-total-item"><div class="ai-total-value">${Math.round(totals.kcal)}</div><div class="ai-total-label">kcal</div></div>
+    <div class="ai-total-item"><div class="ai-total-value" style="color:var(--protein-color)">${round1(totals.prot).toFixed(1)}g</div><div class="ai-total-label">Prot</div></div>
+    <div class="ai-total-item"><div class="ai-total-value" style="color:var(--carbs-color)">${round1(totals.carbs).toFixed(1)}g</div><div class="ai-total-label">Carbs</div></div>
+    <div class="ai-total-item"><div class="ai-total-value" style="color:var(--fat-color)">${round1(totals.fat).toFixed(1)}g</div><div class="ai-total-label">Grasas</div></div>`;
+
+  resultsEl.style.display = 'block';
+}
+
+function renderAIFoodEditNav() {
+  const nav = document.getElementById('ai-edit-nav');
+  if (!nav) return;
+  const foods = App._pendingAIFoods || [];
+  nav.innerHTML = '';
+
+  foods.forEach((food, index) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = `ai-edit-chip ${index === App.aiEditorIndex ? 'active' : ''}`;
+    chip.innerHTML = `<span class="ai-edit-chip-label">${escapeHtml(food.alimento)}</span>`;
+    chip.onclick = () => selectAIFoodEditorItem(index);
+    nav.appendChild(chip);
+  });
+}
+
+function renderAIFoodEditSummary() {
+  const wrap = document.getElementById('ai-edit-summary');
+  if (!wrap) return;
+  const foods = App._pendingAIFoods || [];
+  const totals = foods.reduce(
+    (acc, food) => ({
+      kcal: acc.kcal + (Number(food.kcal) || 0),
+      prot: acc.prot + (Number(food.proteinas) || 0),
+      carbs: acc.carbs + (Number(food.carbohidratos) || 0),
+      fat: acc.fat + (Number(food.grasas) || 0),
+    }),
+    { kcal: 0, prot: 0, carbs: 0, fat: 0 }
+  );
+
+  wrap.innerHTML = `
+    <div class="ai-edit-summary-title">Resumen editable (${foods.length} alimento${foods.length === 1 ? '' : 's'})</div>
+    <div class="ai-edit-summary-grid">
+      <div class="ai-edit-summary-item"><div class="ai-edit-summary-value">${Math.round(totals.kcal)}</div><div class="ai-edit-summary-label">kcal</div></div>
+      <div class="ai-edit-summary-item"><div class="ai-edit-summary-value" style="color:var(--protein-color)">${round1(totals.prot).toFixed(1)}g</div><div class="ai-edit-summary-label">Prot</div></div>
+      <div class="ai-edit-summary-item"><div class="ai-edit-summary-value" style="color:var(--carbs-color)">${round1(totals.carbs).toFixed(1)}g</div><div class="ai-edit-summary-label">Carbs</div></div>
+      <div class="ai-edit-summary-item"><div class="ai-edit-summary-value" style="color:var(--fat-color)">${round1(totals.fat).toFixed(1)}g</div><div class="ai-edit-summary-label">Grasas</div></div>
+    </div>`;
+}
+
+function loadAIFoodIntoEditor(index = 0) {
+  const food = App._pendingAIFoods?.[index];
+  if (!food) return;
+  App.aiEditorIndex = index;
+
+  const setVal = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  };
+
+  setVal('ai-edit-name', food.alimento);
+  setVal('ai-edit-grams', food.gramos_estimados);
+  setVal('ai-edit-kcal', food.kcal);
+  setVal('ai-edit-protein', round1(food.proteinas));
+  setVal('ai-edit-carbs', round1(food.carbohidratos));
+  setVal('ai-edit-fat', round1(food.grasas));
+
+  const position = document.getElementById('ai-edit-position');
+  if (position) position.textContent = `Alimento ${index + 1} de ${App._pendingAIFoods.length}`;
+
+  renderAIFoodEditNav();
+  renderAIFoodEditSummary();
+}
+
+function persistCurrentAIFoodFromForm() {
+  const foods = App._pendingAIFoods;
+  if (!foods?.length) return null;
+  const current = foods[App.aiEditorIndex];
+  if (!current) return null;
+
+  const name = document.getElementById('ai-edit-name')?.value.trim();
+  const grams = Math.max(0, Math.round(Number(document.getElementById('ai-edit-grams')?.value) || 0));
+  const kcal = Math.max(0, Math.round(Number(document.getElementById('ai-edit-kcal')?.value) || 0));
+  const prot = round1(document.getElementById('ai-edit-protein')?.value);
+  const carbs = round1(document.getElementById('ai-edit-carbs')?.value);
+  const fat = round1(document.getElementById('ai-edit-fat')?.value);
+
+  const updated = {
+    ...current,
+    alimento: name || current.alimento,
+    gramos_estimados: grams,
+    cantidad_estimada: grams > 0 ? `${grams}g` : 'Cantidad por confirmar',
+    kcal,
+    proteinas: prot,
+    carbohidratos: carbs,
+    grasas: fat,
+  };
+
+  foods[App.aiEditorIndex] = updated;
+  updateAIResultsSummary();
+  renderAIFoodEditNav();
+  renderAIFoodEditSummary();
+  return updated;
+}
+
+function selectAIFoodEditorItem(index) {
+  persistCurrentAIFoodFromForm();
+  loadAIFoodIntoEditor(index);
+}
+
+function openAIFoodEditModal(resetIndex = false) {
+  if (!App._pendingAIFoods?.length) return;
+  if (resetIndex || App.aiEditorIndex >= App._pendingAIFoods.length) {
+    App.aiEditorIndex = 0;
+  }
+
+  const subtitle = document.getElementById('ai-edit-subtitle');
+  if (subtitle) {
+    subtitle.textContent = `Se guardará en ${getSelectedAIMealLabel()}. Cambiar gramos no recalcula macros automáticamente.`;
+  }
+
+  loadAIFoodIntoEditor(App.aiEditorIndex);
+  document.getElementById('ai-edit-modal')?.classList.add('open');
+}
+
+function closeAIFoodEditModal(event) {
+  if (event && event.target !== document.getElementById('ai-edit-modal')) return;
+  persistCurrentAIFoodFromForm();
+  document.getElementById('ai-edit-modal')?.classList.remove('open');
+}
+
+function validatePendingAIFoods() {
+  const foods = App._pendingAIFoods || [];
+  for (let i = 0; i < foods.length; i++) {
+    const food = foods[i];
+    if (!String(food.alimento || '').trim()) {
+      App.aiEditorIndex = i;
+      loadAIFoodIntoEditor(i);
+      showToast('Cada alimento debe tener un nombre', 'error');
+      return false;
+    }
+    if (!Number.isFinite(food.gramos_estimados) || food.gramos_estimados <= 0) {
+      App.aiEditorIndex = i;
+      loadAIFoodIntoEditor(i);
+      showToast('El peso debe ser mayor a 0 g', 'error');
+      return false;
+    }
+  }
+  return true;
+}
+
+async function saveEditedAIFoods() {
+  persistCurrentAIFoodFromForm();
+  if (!validatePendingAIFoods()) return;
+
+  const foods = App._pendingAIFoods;
+  const mealType = App.selectedAIMeal || 'breakfast';
+  const dateStr = toDateStr(App.currentDiaryDate);
+
+  for (const a of foods) {
+    saveFoodLogLocal({
+      id: 'ai_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      user_id: App.user?.id || 'local',
+      date: dateStr,
+      meal_type: mealType,
+      food_name: a.alimento,
+      quantity: a.gramos_estimados,
+      calories: a.kcal,
+      protein: a.proteinas,
+      carbs: a.carbohidratos,
+      fat: a.grasas,
+      fiber: 0,
+      sugar: 0,
+      source: 'ai',
+      ai_input_mode: App.lastAIInputMode,
+    });
+  }
+
+  closeAIFoodEditModal();
+  clearAIResults();
+  clearAIImageSelection(true);
+
+  const ta = document.getElementById('ai-food-input');
+  if (ta) ta.value = '';
+  const count = document.getElementById('ai-char-count');
+  if (count) count.textContent = '0/500';
+
+  showToast(`✦ ${foods.length} alimento(s) guardado(s) en ${getSelectedAIMealLabel()}`, 'ai', '✦');
+
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+}
+
+function setupAIEditorListeners() {
+  ['ai-edit-name', 'ai-edit-grams', 'ai-edit-kcal', 'ai-edit-protein', 'ai-edit-carbs', 'ai-edit-fat'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      persistCurrentAIFoodFromForm();
+    });
+  });
+}
+
+/* ── Caché de análisis de IA ── */
+function getCachedAIAnalysis(text) {
+  const cache = LS.get('ai_cache', {});
+  return cache[normalizeText(text)] || null;
+}
+
+function setCachedAIAnalysis(text, result) {
+  const key = normalizeText(text);
+  const cache = LS.get('ai_cache', {});
+  const keys = Object.keys(cache);
+  if (keys.length >= 200) delete cache[keys[0]];
+  cache[key] = { result, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
+  LS.set('ai_cache', cache);
+}
+
+/* ── Activar modo offline ── */
+async function activateOfflineSmartFallback(text, originalError = null) {
+  console.warn('[AI] ✦ Activando Inteligencia Local', originalError?.message || '');
+  showToast('✦ Usando Inteligencia Local', 'offline', '✦');
+
+  const localResult = smartOfflineAnalyzeText(text);
+  if (localResult?.alimentos?.length) {
+    App.lastAISourceMode = 'offline';
+    setCachedAIAnalysis(text, localResult);
+    return localResult;
+  }
+
+  const hybridResult = await fallbackToOpenFoodFacts(text);
+  if (hybridResult?.alimentos?.length) {
+    setCachedAIAnalysis(text, hybridResult);
+    return hybridResult;
+  }
+
+  throw originalError || new Error('NO_LOCAL_MATCH');
+}
+
+/* ── Obtener nutrientes (entrada principal) ── */
+async function getNutrientsFromAI(text, imageData = null) {
+  const isImageMode = !!imageData;
+
+  if (!isImageMode) {
+    const cached = getCachedAIAnalysis(text);
+    if (cached) {
+      App.lastAISourceMode = cached.mode || 'ai';
+      return cached.result || cached;
+    }
+  }
+
+  const cfg = getAIConfig();
+  if (!cfg) {
+    if (isImageMode) {
+      throw new Error('IMAGE_NO_API_KEY');
+    }
+    return activateOfflineSmartFallback(text, new Error('NO_API_KEY'));
+  }
+
+  const textPrompt = `Eres un nutricionista experto. Analiza el texto del usuario y devuelve ÚNICAMENTE un JSON válido (sin markdown, sin texto extra):
+{
+  "alimentos": [
+    {
+      "alimento": "nombre del alimento",
+      "cantidad_estimada": "2 unidades / 150g / 1 taza",
+      "gramos_estimados": 150,
+      "kcal": 200,
+      "proteinas": 10.5,
+      "carbohidratos": 25.0,
+      "grasas": 8.0
+    }
+  ]
+}
+Usa valores estándar por 100g y escala según la cantidad. Responde SOLO JSON.`;
+
+  const imagePrompt = 'Analiza esta imagen de comida. Identifica cada alimento, estima su peso en gramos basándote en proporciones estándar y devuelve un JSON estrictamente con esta estructura: { alimentos: [{ alimento, cantidad_estimada, gramos_estimados, kcal, proteinas, carbohidratos, grasas }] }.';
+
+  try {
+    /* P0: Gemini es el único proveedor. Se elimina la bifurcación de OpenAI */
+    const result = await callGeminiAPI(cfg.apiKey, isImageMode ? imagePrompt : textPrompt, text, imageData);
+    App.lastAISourceMode = 'ai';
+    if (!isImageMode) setCachedAIAnalysis(text, result);
+    return result;
+  } catch (e) {
+    if (isImageMode) throw e;
+    console.error('[AI] Fallo de API, activando modo offline:', e.message);
+    return activateOfflineSmartFallback(text, e);
+  }
+}
+
+/* ── Google Gemini (texto + visión) ── */
+async function callGeminiAPI(apiKey, systemPrompt, userText, imageData = null) {
+  // Mantén aquí el modelo que ya te funciona en producción.
+  // En este proyecto se deja la ruta actual para no romper el flujo existente.
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+
+  if (!apiKey) {
+    throw new Error('Gemini API key no configurada');
+  }
+
+  const prompt = imageData
+    ? [systemPrompt, userText ? `Contexto adicional del usuario: ${userText}` : '']
+      .filter(Boolean)
+      .join('\n\n')
+    : [systemPrompt, `Texto del usuario: ${userText}`]
+      .filter(Boolean)
+      .join('\n\n');
+
+  const parts = [{ text: prompt }];
+  if (imageData) {
+    parts.push({
+      inline_data: {
+        mime_type: 'image/jpeg',
+        data: imageData
+      }
+    });
+  }
+
+  let res;
+
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': apiKey
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts
+          }
+        ]
+      })
+    });
+  } catch (networkErr) {
+    console.error('[Gemini] Error de red:', networkErr);
+    throw new Error(`Gemini NETWORK_ERROR: ${networkErr.message}`);
+  }
+
+  if (res.status !== 200) {
+    const rawError = await res.text().catch(() => '');
+    let errorData = {};
+
+    try {
+      errorData = rawError ? JSON.parse(rawError) : {};
+    } catch (_) { }
+
+    const googleMessage =
+      errorData?.error?.message ||
+      rawError ||
+      'Error desconocido';
+
+    console.error(`[Gemini] Error ${res.status}: ${googleMessage}`, errorData);
+    throw new Error(`Gemini ${res.status}: ${googleMessage}`);
+  }
+
+  const data = await res.json();
+  const generatedText = data?.candidates?.[0]?.content?.parts
+    ?.map(part => part?.text || '')
+    .join('\n')
+    .trim();
+
+  if (!generatedText) {
+    console.error('[Gemini] Respuesta inesperada:', data);
+    throw new Error('Gemini respondió sin texto en data.candidates[0].content.parts[].text');
+  }
+
+  return parseAIResponse(generatedText);
+}
+
+/* ── Parsear respuesta de IA ── */
+function parseAIResponse(raw) {
+  try {
+    const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const jsonCandidate = clean.match(/\{[\s\S]*\}/)?.[0] || clean;
+    const parsed = JSON.parse(jsonCandidate);
+    if (!parsed.alimentos || !Array.isArray(parsed.alimentos)) throw new Error('Formato inválido');
+    parsed.alimentos = parsed.alimentos.map(sanitizeAIFoodItem);
+    return parsed;
+  } catch (e) {
+    console.error('[AI] Error al parsear JSON:', e, '\nRaw:', raw);
+    throw new Error('La IA devolvió un formato inesperado');
+  }
+}
+
+/* ── Botón principal "Analizar con IA" ── */
+async function analyzeWithAI() {
+  const ta = document.getElementById('ai-food-input');
+  const text = ta?.value.trim() || '';
+  const imageData = App.aiImage?.base64 || null;
+  const hasImage = !!imageData;
+
+  if (!text && !hasImage) {
+    showToast('Describe la comida o adjunta una foto primero', 'error');
+    ta?.focus();
+    return;
+  }
+
+  App.lastAIInputMode = hasImage ? (text ? 'mixed' : 'image') : 'text';
+
+  const btn = document.getElementById('btn-ai-analyze');
+  const processing = document.getElementById('ai-processing');
+  const subEl = document.getElementById('ai-processing-sub');
+
+  if (btn) btn.disabled = true;
+  renderAIResultsLoading(hasImage ? 'image' : 'text');
+  if (processing) processing.style.display = 'block';
+  if (subEl) subEl.textContent = hasImage ? 'Preparando análisis visual...' : 'Analizando nutrientes...';
+  if (hasImage) showToast('Analizando imagen...', 'ai', '📷');
+
+  try {
+    const cfg = getAIConfig();
+    if (hasImage && cfg && cfg.provider !== 'gemini') {
+      throw new Error('IMAGE_REQUIRES_GEMINI');
+    }
+    if (subEl) {
+      if (hasImage) {
+        subEl.textContent = cfg ? 'Consultando Gemini Vision...' : 'Se necesita Gemini para analizar fotos';
+      } else {
+        subEl.textContent = cfg ? 'Consultando IA...' : 'Activando Inteligencia Local...';
+      }
+    }
+
+    const aiData = await getNutrientsFromAI(text, imageData);
+    renderAIResults(aiData.alimentos);
+  } catch (err) {
+    console.error('[AI] Error final:', err);
+    clearAIResults();
+
+    if (err.message === 'IMAGE_REQUIRES_GEMINI') {
+      showToast('Para analizar fotos cambia el proveedor a Gemini en tu perfil.', 'error');
+    } else if (err.message === 'IMAGE_NO_API_KEY') {
+      showToast('Necesitas una API Key de Gemini para analizar imágenes.', 'error');
+    } else if (hasImage) {
+      showToast('No pude reconocer la comida en la imagen. Puedes registrarla manualmente.', 'info');
+    } else {
+      showToast('No pude interpretar esa comida. Abriendo búsqueda manual.', 'info');
+    }
+
+    openManualFoodRegistration(text);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (processing) processing.style.display = 'none';
+  }
+}
+
+/* ── Fallback híbrido: Open Food Facts ── */
+async function fallbackToOpenFoodFacts(text) {
+  const query = extractFoodKeywords(text);
+  const foods = await searchOpenFoodFacts(query);
+  if (!foods.length) throw new Error('Sin resultados en búsqueda híbrida');
+
+  const f = foods[0];
+  if (f.source === 'local') {
+    App.lastAISourceMode = 'offline';
+    const estimate = estimateFoodPortion(
+      applySynonyms(normalizeSearchText(text)), f, 1
+    );
+    return { alimentos: [buildAIFoodFromLocalFood(f, estimate)] };
+  }
+
+  App.lastAISourceMode = 'hybrid';
+  return {
+    alimentos: [{
+      alimento: f.name,
+      cantidad_estimada: '100g',
+      gramos_estimados: 100,
+      kcal: Math.round(f.calories_per_100g),
+      proteinas: parseFloat(f.protein_per_100g.toFixed(1)),
+      carbohidratos: parseFloat(f.carbs_per_100g.toFixed(1)),
+      grasas: parseFloat(f.fat_per_100g.toFixed(1)),
+    }]
+  };
+}
+
+/* ── Renderizar resultados de IA ── */
+function renderAIResults(alimentos) {
+  if (!alimentos?.length) {
+    showToast('La IA no detectó alimentos. Puedes registrarlos manualmente.', 'info');
+    openManualFoodRegistration(document.getElementById('ai-food-input')?.value || '');
+    return;
+  }
+
+  App._pendingAIFoods = alimentos.map(sanitizeAIFoodItem);
+  App.aiEditorIndex = 0;
+  updateAIResultsSummary();
+  openAIFoodEditModal(true);
+}
+
+function confirmAIFoods() {
+  if (!App._pendingAIFoods?.length) return;
+  openAIFoodEditModal();
+}
+
+function clearAIResults() {
+  const el = document.getElementById('ai-results');
+  if (el) el.style.display = 'none';
+  document.getElementById('ai-edit-modal')?.classList.remove('open');
+  App._pendingAIFoods = null;
+  App.aiEditorIndex = 0;
+}
+
+/* ── AI Coach Insight (Dashboard) ── */
+async function refreshAIInsight() {
+  if (!App.user) return;
+  const bodyEl = document.getElementById('ai-insight-body');
+  const textEl = document.getElementById('ai-insight-text');
+  const thinkEl = document.getElementById('ai-thinking');
+  if (!bodyEl || !textEl) return;
+
+  const todayStr = toDateStr(new Date());
+  const logs = LS.get('food_logs_' + todayStr, []);
+  const totals = logs.reduce(
+    (acc, l) => ({ cal: acc.cal + (l.calories || 0), prot: acc.prot + (l.protein || 0), carbs: acc.carbs + (l.carbs || 0), fat: acc.fat + (l.fat || 0) }),
+    { cal: 0, prot: 0, carbs: 0, fat: 0 }
+  );
+
+  const { daily_calories: goal, protein_goal: pGoal, carbs_goal: cGoal, fat_goal: fGoal } = App.user;
+  const cfg = getAIConfig();
+
+  if (!cfg) {
+    textEl.textContent = generateLocalInsight(totals, { cal: goal, prot: pGoal, carbs: cGoal, fat: fGoal });
+    return;
+  }
+
+  if (thinkEl) thinkEl.style.display = 'flex';
+  if (textEl) textEl.style.display = 'none';
+
+  try {
+    const prompt = `Eres un coach nutricional. El usuario lleva hoy:
+- Calorías: ${Math.round(totals.cal)} / ${goal} kcal
+- Proteínas: ${Math.round(totals.prot)}g / ${pGoal}g
+- Carbos: ${Math.round(totals.carbs)}g / ${cGoal}g
+- Grasas: ${Math.round(totals.fat)}g / ${fGoal}g
+- Objetivo: ${goalLabel(App.user.goal)}
+Responde en español, 1-2 frases cortas y motivadoras. Da UNA recomendación específica. Sin emojis excesivos.`;
+
+    const result = await callAIText(cfg, prompt);
+    if (textEl) { textEl.textContent = result; textEl.style.display = 'block'; }
+  } catch (e) {
+    if (textEl) {
+      textEl.textContent = generateLocalInsight(totals, { cal: goal, prot: pGoal, carbs: cGoal, fat: fGoal });
+      textEl.style.display = 'block';
+    }
+  } finally {
+    if (thinkEl) thinkEl.style.display = 'none';
+    if (textEl) textEl.style.display = 'block';
+  }
+}
+
+/* P0: callAIText — exclusivamente Gemini 1.5 Flash. OpenAI eliminado. */
+async function callAIText(cfg, userPrompt) {
+  /* cfg.provider siempre será 'gemini'; la comprobación queda como guardia */
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cfg.apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: userPrompt }] }],
+      // ¡AQUÍ ESTABA EL ERROR! Subimos de 200 a 800 tokens
+      generationConfig: { maxOutputTokens: 800, temperature: 0.7 }
+    })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(`Gemini ${res.status}: ${e?.error?.message || ''}`);
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+}
+
+function generateLocalInsight(totals, goals) {
+  if (totals.cal === 0) return 'Registra tus comidas para recibir un consejo personalizado.';
+  const pctCal = totals.cal / goals.cal;
+  const pctProt = totals.prot / goals.prot;
+  const pctCarbs = totals.carbs / goals.carbs;
+  const pctFat = totals.fat / goals.fat;
+  if (pctProt < 0.5 && pctCal < 0.8) return `Hoy vas bajo en proteínas (${Math.round(pctProt * 100)}%). Considera añadir pollo, huevos o legumbres a tu próxima comida.`;
+  if (pctCal > 1.1) return `Ya superaste tu meta calórica. Opta por verduras o infusiones para el resto del día.`;
+  if (pctCarbs < 0.4) return `Llevas pocos carbohidratos. Un plátano o avena te darán energía sostenida.`;
+  if (pctFat > 0.9 && pctProt < 0.6) return `Las grasas están altas. Refuerza proteínas con pechuga o claras de huevo.`;
+  if (pctCal < 0.5) return `Llevas menos del 50% de tus calorías. ¡No te saltes comidas!`;
+  return `¡Vas bien! Llevas ${Math.round(pctCal * 100)}% de tus calorías diarias. Mantén el equilibrio.`;
+}
+
+/* ── Voz (Web Speech API) ── */
+function toggleVoiceInput() {
+  const btn = document.getElementById('ai-mic-btn');
+  const ta = document.getElementById('ai-food-input');
+
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    showToast('Tu navegador no soporta dictado de voz', 'error');
+    return;
+  }
+
+  if (App.recognition) {
+    App.recognition.stop();
+    App.recognition = null;
+    btn?.classList.remove('recording');
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  App.recognition = new SR();
+  App.recognition.lang = 'es-ES';
+  App.recognition.continuous = false;
+  App.recognition.interimResults = true;
+
+  App.recognition.onstart = () => { btn?.classList.add('recording'); showToast('🎤 Dictando... habla ahora', 'info'); };
+  App.recognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    if (ta) { ta.value = transcript; const c = document.getElementById('ai-char-count'); if (c) c.textContent = `${transcript.length}/500`; }
+  };
+  App.recognition.onend = () => { btn?.classList.remove('recording'); App.recognition = null; };
+  App.recognition.onerror = (e) => { btn?.classList.remove('recording'); App.recognition = null; if (e.error !== 'aborted') showToast('Error en dictado: ' + e.error, 'error'); };
+  App.recognition.start();
+}
+
+/* ── Selector de comida del AI Input ── */
+function selectAIMeal(btn) {
+  document.querySelectorAll('.ai-meal-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  App.selectedAIMeal = btn.dataset.meal;
+}
+
+function getSelectedAIMeal() { return App.selectedAIMeal || 'breakfast'; }
+
+/* ══════════════════════════════════════════════════════════════
+   OPEN FOOD FACTS + BASE LOCAL (SISTEMA HÍBRIDO)
+   Timeout: 4s → si no responde, usa base local.
+   AbortController global para cancelar búsquedas anteriores.
+   ══════════════════════════════════════════════════════════════ */
+
+/* P1: Controlador global para cancelar la búsqueda activa */
+let _searchAbortController = null;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Búsqueda local con:
+ *   1. Matching exacto y substring
+ *   2. Sinónimos regionales
+ *   3. Fuzzy (Levenshtein) con umbral > 75%
+ */
+function searchLocalFoodDatabase(query, limit = 12) {
+  const rawQuery = normalizeSearchText(query);
+  const synonymsQuery = applySynonyms(rawQuery);  // aplica sinónimos
+  if (!synonymsQuery || synonymsQuery.length < 2) return [];
+
+  const queryWords = synonymsQuery.split(' ').filter(Boolean);
+
+  return LOCAL_FOOD_DB
+    .map(food => {
+      const terms = getFoodAliases(food);
+      let score = 0;
+
+      terms.forEach(term => {
+        // Exacto
+        if (term === synonymsQuery || term === rawQuery) { score = Math.max(score, 120); return; }
+        // Starts-with
+        if (term.startsWith(synonymsQuery) || term.startsWith(rawQuery)) { score = Math.max(score, 95); return; }
+        // Contains
+        if (synonymsQuery.startsWith(term)) { score = Math.max(score, 82); return; }
+        if (term.includes(synonymsQuery) || term.includes(rawQuery)) { score = Math.max(score, 75); return; }
+
+        // Palabras clave
+        const wordHits = queryWords.filter(w => w.length > 1 && term.includes(w)).length;
+        if (wordHits === queryWords.length && wordHits > 0) score = Math.max(score, 64 + wordHits * 6);
+        else if (wordHits > 0) score = Math.max(score, 42 + wordHits * 4);
+
+        // Fuzzy (Levenshtein) por token individual
+        queryWords.forEach(word => {
+          if (word.length < 3) return;
+          term.split(' ').forEach(termToken => {
+            if (termToken.length < 3) return;
+            const sim = fuzzyScore(word, termToken);
+            if (sim > 0.75) score = Math.max(score, Math.round(sim * 70));
+          });
+        });
+      });
+
+      return score >= 40 ? { ...food, source: 'local', _score: score } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b._score - a._score || a.name.localeCompare(b.name, 'es'))
+    .slice(0, limit)
+    .map(({ _score, ...food }) => food);
+}
+
+async function searchOpenFoodFactsRemote(query, signal) {
+  /* P1: Timeout extendido a 4s para mejor tasa de éxito */
+  const params = new URLSearchParams({
+    search_terms: query,
+    search_simple: '1',
+    action: 'process',
+    json: '1',
+    page_size: '20',
+    lc: 'es',
+    tags_lc: 'es',
+    fields: 'product_name,product_name_es,nutriments,brands'
+  });
+
+  const url = `https://es.openfoodfacts.org/cgi/search.pl?${params.toString()}`;
+
+  try {
+    /* P1: Acepta signal externo del AbortController de búsqueda + timeout propio */
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 4000);
+
+    /* Combinar señales: la de búsqueda cancelada y la de timeout */
+    const combinedSignal = signal || timeoutController.signal;
+
+    const res = await fetch(url, { signal: combinedSignal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) throw new Error(`OFF ${res.status}`);
+
+    const data = await res.json();
+    const prods = data.products || [];
+
+    return prods
+      .map(p => {
+        const kcal = Number(
+          p.nutriments?.['energy-kcal_100g'] ??
+          (p.nutriments?.energy_100g ? p.nutriments.energy_100g / 4.184 : 0)
+        );
+        if (!p.product_name && !p.product_name_es) return null;
+        if (!Number.isFinite(kcal) || kcal <= 0) return null;
+        return {
+          name: p.product_name_es || p.product_name,
+          category: p.brands || 'Open Food Facts ES',
+          calories_per_100g: Math.round(kcal),
+          protein_per_100g: parseFloat((Number(p.nutriments?.proteins_100g) || 0).toFixed(1)),
+          carbs_per_100g: parseFloat((Number(p.nutriments?.carbohydrates_100g) || 0).toFixed(1)),
+          fat_per_100g: parseFloat((Number(p.nutriments?.fat_100g) || 0).toFixed(1)),
+          fiber_per_100g: parseFloat((Number(p.nutriments?.fiber_100g) || 0).toFixed(1)),
+          sugar_per_100g: parseFloat((Number(p.nutriments?.sugars_100g) || 0).toFixed(1)),
+          source: 'off',
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 15);
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      /* Puede ser por cancelación de búsqueda (usuario sigue escribiendo) o timeout */
+      console.info('[OFF] Petición cancelada o timeout alcanzado.');
+    } else {
+      console.warn('[OFF] Error de red:', e.message);
+    }
+    return [];
+  }
+}
+
+function mergeFoodResults(localResults, apiResults) {
+  const merged = [];
+  const seen = new Set();
+  [...localResults, ...apiResults].forEach(food => {
+    const key = normalizeSearchText(food.name);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(food);
+  });
+  return merged.slice(0, 15);
+}
+
+function updateSearchSourceBadge(foods = []) {
+  const badge = document.getElementById('search-source-badge');
+  if (!badge) return;
+  const hasLocal = foods.some(f => f.source === 'local');
+  const hasOff = foods.some(f => f.source === 'off');
+  badge.textContent = hasLocal && hasOff ? 'LOCAL + OFF' : hasLocal ? 'LOCAL' : hasOff ? 'OFF ES' : 'LOCAL + OFF';
+}
+
+async function searchOpenFoodFacts(query) {
+  if (!query || query.length < 2) return [];
+
+  /* P1: Cancelar petición anterior antes de iniciar la nueva */
+  if (_searchAbortController) {
+    _searchAbortController.abort();
+  }
+  _searchAbortController = new AbortController();
+  const signal = _searchAbortController.signal;
+
+  const localResults = searchLocalFoodDatabase(query, 12);
+  const apiResults = await searchOpenFoodFactsRemote(query, signal);
+  const merged = mergeFoodResults(localResults, apiResults);
+  App.allFoods = merged;
+  return merged;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FAVORITOS
+   ══════════════════════════════════════════════════════════════ */
+function getFavorites() {
+  return LS.get('nt_favorites', []);
+}
+
+window.toggleFavorite = function (food) {
+  let favs = getFavorites();
+  const nameToMatch = food.food_name || food.name;
+  const existing = favs.find(f => f.food_name === nameToMatch);
+
+  if (existing) {
+    removeFavorite(existing.id);
+  } else {
+    // Escalar valores al porcionado si viene de búsqueda
+    const ratio = (food.defaultServingGrams || 100) / 100;
+    const newFav = {
+      id: 'fav_' + Date.now(),
+      food_name: nameToMatch,
+      quantity: food.quantity || food.defaultServingGrams || 100,
+      calories: food.calories !== undefined ? food.calories : Math.round((food.calories_per_100g || 0) * ratio),
+      protein: food.protein !== undefined ? food.protein : parseFloat(((food.protein_per_100g || 0) * ratio).toFixed(1)),
+      carbs: food.carbs !== undefined ? food.carbs : parseFloat(((food.carbs_per_100g || 0) * ratio).toFixed(1)),
+      fat: food.fat !== undefined ? food.fat : parseFloat(((food.fat_per_100g || 0) * ratio).toFixed(1)),
+      fiber: food.fiber !== undefined ? food.fiber : parseFloat(((food.fiber_per_100g || 0) * ratio).toFixed(1)),
+      sugar: food.sugar !== undefined ? food.sugar : parseFloat(((food.sugar_per_100g || 0) * ratio).toFixed(1)),
+      source: food.source || 'manual'
+    };
+    favs.push(newFav);
+    LS.set('nt_favorites', favs);
+    showToast('Guardado en Favoritos ⭐', 'success');
+  }
+};
+
+function addLogToFavorites(logId) {
+  const log = App.diaryLogs.find(l => l.id === logId);
+  if (log) toggleFavorite(log);
+}
+
+function removeFavorite(favId) {
+  let favs = getFavorites();
+  favs = favs.filter(f => f.id !== favId);
+  LS.set('nt_favorites', favs);
+  renderFavorites();
+}
+
+function renderFavorites() {
+  const container = document.getElementById('favorites-list');
+  if (!container) return;
+  const favs = getFavorites();
+  if (favs.length === 0) {
+    container.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">⭐</div>
+        <p>Aún no tienes alimentos favoritos.<br><small>Guárdalos desde el diario principal.</small></p>
+      </div>`;
+  } else {
+    container.innerHTML = '';
+    favs.forEach(fav => {
+      const item = document.createElement('div');
+      item.className = 'fav-quick-item';
+      item.innerHTML = `
+        <div class="fav-quick-info">
+          <div class="fav-quick-name">${escapeHtml(fav.food_name)}</div>
+          <div class="fav-quick-cal">${fav.quantity ? fav.quantity + 'g · ' : ''}${Math.round(fav.calories)} kcal · ${Math.round(fav.protein)}g prot</div>
+        </div>
+        <div class="fav-quick-actions">
+          <button class="btn-quick-add" title="Añadir al diario">Añadir ➕</button>
+          <button class="btn-quick-rem" title="Quitar de favoritos">Quitar 🗑️</button>
+        </div>`;
+
+      item.querySelector('.btn-quick-add').onclick = (e) => {
+        e.stopPropagation();
+        prepareFavAdd(fav);
+      };
+
+      item.querySelector('.btn-quick-rem').onclick = (e) => {
+        e.stopPropagation();
+        if (confirm('¿Seguro quieres quitar este favorito?')) {
+          removeFavorite(fav.id);
+        }
+      };
+
+      container.appendChild(item);
+    });
+  }
+}
+
+function toggleFavoritesModal(show, event) {
+  if (event && event.target !== document.getElementById('favorites-modal') && !show) return;
+  const modal = document.getElementById('favorites-modal');
+  if (!modal) return;
+  if (show) {
+    document.getElementById('meal-selector-ui')?.classList.add('hidden');
+    renderFavorites();
+    modal.classList.add('open');
+  } else {
+    modal.classList.remove('open');
+  }
+}
+
+let pendingFavToAdd = null;
+
+function prepareFavAdd(fav) {
+  pendingFavToAdd = fav;
+  const ui = document.getElementById('meal-selector-ui');
+  if (ui) ui.classList.remove('hidden');
+}
+
+window.addToMealFromFav = async function (targetMeal) {
+  if (!pendingFavToAdd) return;
+  const fav = pendingFavToAdd;
+  const logData = {
+    id: `manual_${Date.now()}`,
+    user_id: App.user?.id || 'local',
+    date: toDateStr(App.currentDiaryDate),
+    meal_type: targetMeal,
+    food_name: fav.food_name,
+    quantity: fav.quantity,
+    calories: fav.calories,
+    protein: fav.protein,
+    carbs: fav.carbs,
+    fat: fav.fat,
+    fiber: fav.fiber,
+    sugar: fav.sugar,
+    source: fav.source || 'manual'
+  };
+  saveFoodLogLocal(logData);
+  document.getElementById('meal-selector-ui')?.classList.add('hidden');
+  toggleFavoritesModal(false);
+  showToast(`${fav.food_name} añadido ✓`, 'success');
+  pendingFavToAdd = null;
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+};
+
+/* ══════════════════════════════════════════════════════════════
+   FOOD SEARCH MODAL
+   ══════════════════════════════════════════════════════════════ */
+let searchDebounceTimer = null;
+
+function openAddFood(event, mealType) {
+  if (event) event.stopPropagation();
+  App.currentMealType = mealType;
+  App.selectedFood = null;
+
+  const mealNames = { breakfast: 'Desayuno', lunch: 'Almuerzo', dinner: 'Cena', snack: 'Snacks' };
+  const titleEl = document.getElementById('modal-meal-title');
+  if (titleEl) titleEl.textContent = `Añadir a ${mealNames[mealType] || 'Comida'}`;
+
+  const searchInput = document.getElementById('food-search-input');
+  if (searchInput) searchInput.value = '';
+  document.getElementById('qty-picker-section')?.classList.add('hidden');
+  const qi = document.getElementById('quick-cal-input');
+  if (qi) qi.value = '';
+
+  const body = document.getElementById('food-search-results');
+  if (body) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>Escribe para buscar alimentos<br><small>Base local (104) + Open Food Facts ES</small></p></div>`;
+    updateSearchSourceBadge([]);
+  }
+
+  const modal = document.getElementById('food-modal');
+  if (modal) { modal.classList.add('open'); setTimeout(() => searchInput?.focus(), 300); }
+}
+
+function closeFoodModal(event) {
+  if (event && event.target !== document.getElementById('food-modal')) return;
+  document.getElementById('food-modal')?.classList.remove('open');
+  App.selectedFood = null;
+}
+
+function closeModal() {
+  document.getElementById('food-modal')?.classList.remove('open');
+  App.selectedFood = null;
+}
+
+async function searchFood(query) {
+  const q = query.trim();
+  clearTimeout(searchDebounceTimer);
+
+  if (q.length < 2) {
+    const body = document.getElementById('food-search-results');
+    if (body) body.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>Escribe al menos 2 caracteres</p></div>`;
+    updateSearchSourceBadge([]);
+    document.getElementById('qty-picker-section')?.classList.add('hidden');
+    return;
+  }
+
+  renderSearchSkeleton();
+  searchDebounceTimer = setTimeout(async () => {
+    const results = await searchOpenFoodFacts(q);
+    renderFoodSearchResults(results);
+    updateSearchSourceBadge(results);
+    document.getElementById('qty-picker-section')?.classList.add('hidden');
+    App.selectedFood = null;
+  }, 350);
+}
+
+function renderSearchSkeleton() {
+  const body = document.getElementById('food-search-results');
+  if (!body) return;
+  body.innerHTML = Array(4).fill(`
+    <div style="padding:12px 0;border-bottom:1px solid var(--gray-100)">
+      <div class="skeleton" style="height:14px;width:60%;margin-bottom:8px"></div>
+      <div class="skeleton" style="height:12px;width:40%"></div>
+    </div>`).join('');
+}
+
+function renderFoodSearchResults(foods) {
+  const container = document.getElementById('food-search-results');
+  if (!container) return;
+
+  if (!foods?.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>No se encontraron resultados<br><small>Prueba con otro nombre o sinónimo</small></p></div>`;
+    updateSearchSourceBadge([]);
+    return;
+  }
+
+  updateSearchSourceBadge(foods);
+  container.innerHTML = '';
+
+  const favs = getFavorites();
+
+  foods.forEach(food => {
+    const item = document.createElement('div');
+    const sourceLabel = food.source === 'local' ? 'Base local' : (food.category || 'Open Food Facts ES');
+    const sourceBadge = food.source === 'local'
+      ? '<span style="font-size:.68rem;font-weight:800;color:#92400e;background:#fef3c7;padding:2px 6px;border-radius:999px">LOCAL</span>'
+      : '<span style="font-size:.68rem;font-weight:800;color:#047857;background:#d1fae5;padding:2px 6px;border-radius:999px">OFF</span>';
+
+    const isFav = favs.some(f => f.name === food.name);
+
+    item.className = 'search-result-item';
+    item.innerHTML = `
+      <div>
+        <div class="sri-name">${escapeHtml(food.name)}</div>
+        <div class="sri-cal">${food.calories_per_100g} kcal/100g · ${food.protein_per_100g}g prot · <span style="font-size:.7rem;color:var(--emerald-600)">${escapeHtml(sourceLabel)}</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${sourceBadge}
+        <button class="sri-fav-btn" title="Favorito">${isFav ? '⭐' : '☆'}</button>
+      </div>`;
+
+    const favBtn = item.querySelector('.sri-fav-btn');
+    favBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleFavorite(food);
+      const isNowFav = getFavorites().some(f => f.food_name === food.name || f.name === food.name);
+      favBtn.textContent = isNowFav ? '⭐' : '☆';
+    };
+
+    item.onclick = () => selectFoodFromSearch(food);
+    container.appendChild(item);
+  });
+}
+
+function selectFoodFromSearch(food) {
+  App.selectedFood = food;
+  const nameEl = document.getElementById('selected-food-name');
+  if (nameEl) nameEl.textContent = food.name;
+  const qtyInput = document.getElementById('qty-input');
+  if (qtyInput) qtyInput.value = food.defaultServingGrams || 100;
+  document.getElementById('qty-picker-section')?.classList.remove('hidden');
+}
+
+async function confirmAddFood() {
+  const food = App.selectedFood;
+  if (!food) return;
+
+  const qty = parseFloat(document.getElementById('qty-input')?.value) || 100;
+  const ratio = qty / 100;
+  const source = food.source || 'local';
+
+  const logData = {
+    id: `${source}_${Date.now()}`,
+    user_id: App.user?.id || 'local',
+    date: toDateStr(App.currentDiaryDate),
+    meal_type: App.currentMealType,
+    food_name: food.name,
+    quantity: qty,
+    calories: Math.round(food.calories_per_100g * ratio),
+    protein: parseFloat((food.protein_per_100g * ratio).toFixed(1)),
+    carbs: parseFloat((food.carbs_per_100g * ratio).toFixed(1)),
+    fat: parseFloat((food.fat_per_100g * ratio).toFixed(1)),
+    fiber: parseFloat(((food.fiber_per_100g || 0) * ratio).toFixed(1)),
+    sugar: parseFloat(((food.sugar_per_100g || 0) * ratio).toFixed(1)),
+    source,
+  };
+
+  saveFoodLogLocal(logData);
+  closeModal();
+  showToast(`${food.name} añadido ✓`, 'success');
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+}
+
+async function quickAddCalories() {
+  const input = document.getElementById('quick-cal-input');
+  const cal = parseFloat(input?.value);
+  if (!cal || cal <= 0 || cal > 9999) { showToast('Ingresa una cantidad válida', 'error'); return; }
+
+  saveFoodLogLocal({
+    id: 'quick_' + Date.now(),
+    user_id: App.user?.id || 'local',
+    date: toDateStr(App.currentDiaryDate),
+    meal_type: App.currentMealType,
+    food_name: 'Entrada rápida',
+    quantity: 0,
+    calories: cal,
+    protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0,
+    source: 'manual',
+  });
+
+  closeModal();
+  showToast(`⚡ ${cal} kcal añadidas`, 'success');
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PERSISTENCIA (localStorage · por fecha)
+   ══════════════════════════════════════════════════════════════ */
+function saveFoodLogLocal(logData) {
+  const key = 'food_logs_' + logData.date;
+  const existing = LS.get(key, []);
+  LS.set(key, [...existing.filter(l => l.id !== logData.id), logData]);
+}
+
+function deleteFoodLogLocal(logId, dateStr) {
+  const key = 'food_logs_' + dateStr;
+  LS.set(key, LS.get(key, []).filter(l => l.id !== logId));
+}
+
+async function deleteFoodLog(logId) {
+  if (!confirm('¿Eliminar este alimento?')) return;
+  const dateStr = toDateStr(App.currentDiaryDate);
+  deleteFoodLogLocal(logId, dateStr);
+  showToast('Alimento eliminado', 'info', '🗑️');
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DASHBOARD
+   ══════════════════════════════════════════════════════════════ */
+async function refreshDashboard() {
+  if (!App.user) return;
+  const todayStr = toDateStr(new Date());
+  App.todayLogs = LS.get('food_logs_' + todayStr, []);
+  const totals = computeTotals(App.todayLogs);
+
+  updateCaloriesRing(totals.calories, App.user.daily_calories);
+  updateMacroBars(totals);
+
+  ['breakfast', 'lunch', 'dinner', 'snack'].forEach(m => {
+    const mCal = App.todayLogs.filter(l => l.meal_type === m).reduce((s, l) => s + (l.calories || 0), 0);
+    const el = document.getElementById(`mini-${m}`);
+    if (el) el.textContent = Math.round(mCal) + ' kcal';
+  });
+
+  loadTodayWater();
+  renderDashboardWater();
+
+  /* P2: Estado del Dashboard — mostrar mensaje neutral si el día está vacío */
+  if (App.todayLogs.length > 0) {
+    refreshAIInsight();
+  } else {
+    const textEl = document.getElementById('ai-insight-text');
+    if (textEl) {
+      textEl.textContent = '¡Hola, ' + (App.user.name || 'Usuario').split(' ')[0] +
+        '! Registra tus primeras comidas del día para recibir consejos personalizados de tu Coach IA.';
+    }
+  }
+}
+
+function computeTotals(logs) {
+  /* P0: Corrección de typo — acc.prot → acc.protein (evita NaN en dashboard) */
+  return logs.reduce(
+    (acc, l) => ({
+      calories: acc.calories + (l.calories || 0),
+      protein: acc.protein + (l.protein || 0),
+      carbs: acc.carbs + (l.carbs || 0),
+      fat: acc.fat + (l.fat || 0),
+      fiber: acc.fiber + (l.fiber || 0),
+      sugar: acc.sugar + (l.sugar || 0)
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }
+  );
+}
+
+function updateCaloriesRing(consumed, goal) {
+  const remaining = Math.max(0, goal - consumed);
+  const over = consumed > goal;
+
+  document.getElementById('ring-remaining').textContent = over ? 'Excedido' : Math.round(remaining);
+  document.getElementById('dash-consumed').textContent = Math.round(consumed);
+  document.getElementById('dash-goal').textContent = goal;
+
+  const ctx = document.getElementById('calories-ring');
+  if (!ctx) return;
+
+  const displayConsumed = Math.round(consumed);
+  const displayRemain = Math.max(0, goal - displayConsumed);
+  const color = over ? '#ef4444' : 'rgba(255,255,255,.9)';
+
+  if (App.caloriesRingChart) {
+    App.caloriesRingChart.data.datasets[0].data = [displayConsumed, displayRemain];
+    App.caloriesRingChart.data.datasets[0].backgroundColor = [color, 'rgba(255,255,255,.2)'];
+    App.caloriesRingChart.update('none');
+    return;
+  }
+
+  App.caloriesRingChart = new Chart(ctx.getContext('2d'), {
+    type: 'doughnut',
+    data: { datasets: [{ data: [displayConsumed, displayRemain], backgroundColor: [color, 'rgba(255,255,255,.2)'], borderWidth: 0, hoverOffset: 0 }] },
+    options: { cutout: '72%', responsive: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { duration: 700, easing: 'easeInOutQuart' } }
+  });
+}
+
+function updateMacroBars(totals) {
+  if (!App.user) return;
+  [
+    { key: 'protein', goal: App.user.protein_goal, el: 'dash-protein', bar: 'bar-protein', goalEl: 'dash-protein-goal' },
+    { key: 'carbs', goal: App.user.carbs_goal, el: 'dash-carbs', bar: 'bar-carbs', goalEl: 'dash-carbs-goal' },
+    { key: 'fat', goal: App.user.fat_goal, el: 'dash-fat', bar: 'bar-fat', goalEl: 'dash-fat-goal' }
+  ].forEach(m => {
+    const val = Math.round(totals[m.key]);
+    const pct = Math.min(100, Math.round((val / m.goal) * 100));
+    const el = document.getElementById(m.el);
+    const bar = document.getElementById(m.bar);
+    const goalEl = document.getElementById(m.goalEl);
+    if (el) el.textContent = val;
+    if (goalEl) goalEl.textContent = m.goal;
+    if (bar) bar.style.width = pct + '%';
+  });
+}
+
+/* ── Water Dashboard ── */
+function loadTodayWater() {
+  const todayStr = toDateStr(new Date());
+  App.todayWater = LS.get('water_' + todayStr, 0);
+}
+
+function renderDashboardWater() {
+  const goal = App.user?.water_goal || 8;
+  const current = App.todayWater || 0;
+  const countEl = document.getElementById('dash-water');
+  const goalEl = document.getElementById('dash-water-goal');
+  if (countEl) countEl.textContent = current;
+  if (goalEl) goalEl.textContent = goal;
+
+  const container = document.getElementById('dash-water-glasses');
+  if (!container) return;
+  container.innerHTML = '';
+  for (let i = 0; i < goal; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'glass-btn' + (i < current ? ' filled' : '');
+    btn.textContent = '💧';
+    btn.title = `Vaso ${i + 1}`;
+    btn.onclick = () => quickSetWater(i + 1);
+    container.appendChild(btn);
+  }
+}
+
+async function quickSetWater(glasses) {
+  App.todayWater = glasses;
+  LS.set('water_' + toDateStr(new Date()), glasses);
+  renderDashboardWater();
+  showToast(`💧 ${glasses} vasos registrados`, 'info');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DIARIO
+   ══════════════════════════════════════════════════════════════ */
+async function refreshDiary() {
+  const dateStr = toDateStr(App.currentDiaryDate);
+  const label = document.getElementById('diary-date-label');
+  if (label) label.textContent = formatDateLabel(App.currentDiaryDate);
+  App.diaryLogs = LS.get('food_logs_' + dateStr, []);
+  renderDiaryMeals(App.diaryLogs);
+}
+
+function changeDate(delta) {
+  const d = new Date(App.currentDiaryDate);
+  d.setDate(d.getDate() + delta);
+  App.currentDiaryDate = d;
+  refreshDiary();
+}
+
+function renderDiaryMeals(logs) {
+  ['breakfast', 'lunch', 'dinner', 'snack'].forEach(meal => {
+    const mealLogs = logs.filter(l => l.meal_type === meal);
+    const list = document.getElementById(`food-list-${meal}`);
+    if (!list) return;
+
+    const calEl = list.parentElement?.querySelector('.meal-cal-display');
+    if (calEl) calEl.textContent = Math.round(mealLogs.reduce((s, l) => s + (l.calories || 0), 0));
+
+    if (!mealLogs.length) {
+      list.innerHTML = `<div class="empty-state"><div class="empty-icon">🍽️</div><p>Sin alimentos registrados<br><small>Usa IA o búsqueda manual ↑</small></p></div>`;
+      return;
+    }
+    list.innerHTML = '';
+    mealLogs.forEach(log => list.appendChild(createFoodItem(log)));
+  });
+}
+
+function createFoodItem(log) {
+  const source = log.source || 'manual';
+  const wrapper = document.createElement('div');
+  wrapper.dataset.logId = log.id;
+
+  const item = document.createElement('div');
+  item.className = 'food-item';
+
+  const badgeHtml = source === 'ai'
+    ? `<span class="food-source-badge ai">IA</span>`
+    : source === 'local'
+      ? `<span class="food-source-badge off" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">LOCAL</span>`
+      : source === 'off'
+        ? `<span class="food-source-badge off">OFF</span>`
+        : `<span class="food-source-badge manual">Manual</span>`;
+
+  const dotClass = source === 'ai' ? 'food-item-dot ai-source' : 'food-item-dot';
+
+  item.innerHTML = `
+    <div class="food-item-left">
+      <div class="${dotClass}"></div>
+      <div class="food-item-info">
+        <div class="food-item-name">${escapeHtml(log.food_name)}</div>
+        <div class="food-item-qty">${log.quantity ? log.quantity + 'g' : '—'}</div>
+      </div>
+      ${badgeHtml}
+    </div>
+    <div class="food-item-cal">${Math.round(log.calories)} kcal</div>`;
+
+  const expanded = document.createElement('div');
+  expanded.className = 'food-item-expanded';
+  expanded.innerHTML = `
+    <div class="food-micro-grid">
+      <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div>
+      <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div>
+      <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div>
+      <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn-fav-food" onclick="addLogToFavorites('${log.id}')">⭐ Favorito</button>
+      <button class="btn-delete-food" style="margin-top:0;" onclick="deleteFoodLog('${log.id}')">🗑️ Eliminar</button>
+    </div>`;
+
+  item.onclick = () => expanded.classList.toggle('open');
+  wrapper.appendChild(item);
+  wrapper.appendChild(expanded);
+  return wrapper;
+}
+
+function toggleMealSection() { /* secciones siempre expandidas */ }
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AGUA
+   ══════════════════════════════════════════════════════════════ */
+async function refreshWaterPage() {
+  loadTodayWater();
+  const goal = App.user?.water_goal || 8;
+  const current = App.todayWater || 0;
+
+  updateWaterProgressArc(current, goal);
+  const wpGlasses = document.getElementById('wp-glasses');
+  if (wpGlasses) wpGlasses.textContent = current;
+  const wpTitle = document.getElementById('wp-title');
+  if (wpTitle) {
+    if (current === 0) wpTitle.textContent = '¡Hidrátate!';
+    else if (current < goal) wpTitle.textContent = '¡Sigue hidrátándote!';
+    else wpTitle.textContent = '¡Meta alcanzada! 🎉';
+  }
+  const wpSub = document.getElementById('wp-sub');
+  if (wpSub) wpSub.textContent = `Meta: ${goal} vasos diarios · ${current}/${goal}`;
+
+  renderBigGlassGrid(current, goal);
+  renderWaterChart();
+}
+
+function updateWaterProgressArc(current, goal) {
+  const arc = document.getElementById('water-progress-arc');
+  if (!arc) return;
+  const circ = 2 * Math.PI * 58;
+  const pct = Math.min(current / goal, 1);
+  arc.style.strokeDasharray = circ.toFixed(1);
+  arc.style.strokeDashoffset = (circ - pct * circ).toFixed(1);
+}
+
+function renderBigGlassGrid(current, goal) {
+  const grid = document.getElementById('water-big-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (let i = 0; i < goal; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'big-glass-btn' + (i < current ? ' filled' : '');
+    btn.textContent = '💧';
+    btn.title = `Vaso ${i + 1}`;
+    btn.onclick = () => setWaterTo(i + 1);
+    grid.appendChild(btn);
+  }
+}
+
+async function addWater() {
+  const goal = App.user?.water_goal || 8;
+  if (App.todayWater >= goal) { showToast('¡Meta de hidratación alcanzada! 💧', 'info'); return; }
+  App.todayWater++;
+  LS.set('water_' + toDateStr(new Date()), App.todayWater);
+  refreshWaterPage();
+  renderDashboardWater();
+  if (App.todayWater === goal) showToast('¡Meta de hidratación alcanzada! 💧🎉', 'success', '💧');
+  else showToast(`+1 vaso → ${App.todayWater}/${goal}`, 'info', '💧');
+}
+
+async function removeWater() {
+  if (App.todayWater <= 0) return;
+  App.todayWater--;
+  LS.set('water_' + toDateStr(new Date()), App.todayWater);
+  refreshWaterPage();
+  renderDashboardWater();
+  showToast(`Vaso removido → ${App.todayWater}`, 'info', '💧');
+}
+
+async function setWaterTo(count) {
+  App.todayWater = count;
+  LS.set('water_' + toDateStr(new Date()), count);
+  refreshWaterPage();
+  renderDashboardWater();
+  showToast(`💧 ${count} vasos registrados`, 'info');
+}
+
+function renderWaterChart() {
+  const canvas = document.getElementById('water-chart');
+  if (!canvas) return;
+  const goal = App.user?.water_goal || 8;
+  const labels = [], values = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
+    values.push(LS.get('water_' + toDateStr(d), 0));
+  }
+  if (App.waterChartInst) {
+    App.waterChartInst.data.labels = labels;
+    App.waterChartInst.data.datasets[0].data = values;
+    App.waterChartInst.data.datasets[0].backgroundColor = values.map(v => v >= goal ? '#3b82f6' : 'rgba(59,130,246,.4)');
+    App.waterChartInst.update();
+    return;
+  }
+  App.waterChartInst = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Vasos', data: values, backgroundColor: values.map(v => v >= goal ? '#3b82f6' : 'rgba(59,130,246,.4)'), borderRadius: 8, borderSkipped: false }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} vasos` } } }, scales: { y: { beginAtZero: true, max: goal + 2, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { stepSize: 2, font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROGRESO
+   ══════════════════════════════════════════════════════════════ */
+async function refreshProgress() {
+  if (!App.user) return;
+  loadAndRenderWeightChart();
+  loadAndRenderCaloriesChart();
+}
+
+function loadAndRenderWeightChart() {
+  const canvas = document.getElementById('weight-chart');
+  if (!canvas) return;
+  let weightLogs = LS.get('weight_logs', []).sort((a, b) => a.date.localeCompare(b.date));
+  if (!weightLogs.length && App.user.weight) weightLogs = [{ date: toDateStr(new Date()), weight: App.user.weight }];
+
+  const labels = weightLogs.map(l => { const d = new Date(l.date + 'T12:00:00'); return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }); });
+  const data = weightLogs.map(l => l.weight);
+  const first = data[0] || App.user.weight;
+  const last = data[data.length - 1] || App.user.weight;
+  const change = last - first;
+
+  const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+  setEl('stat-current-weight', last + ' kg');
+  setEl('stat-initial-weight', first + ' kg');
+  const changeEl = document.getElementById('stat-change');
+  if (changeEl) {
+    changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(1) + ' kg';
+    changeEl.style.color = change > 0
+      ? (App.user.goal === 'gain_muscle' ? 'var(--emerald-600)' : 'var(--danger)')
+      : change < 0
+        ? (App.user.goal === 'lose_weight' ? 'var(--emerald-600)' : 'var(--danger)')
+        : 'var(--gray-600)';
+  }
+
+  if (App.weightChartInst) { App.weightChartInst.data.labels = labels; App.weightChartInst.data.datasets[0].data = data; App.weightChartInst.update(); return; }
+  App.weightChartInst = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [{ label: 'Peso (kg)', data, borderColor: 'var(--emerald-500)', backgroundColor: 'rgba(16,185,129,.1)', borderWidth: 2.5, pointBackgroundColor: 'var(--emerald-500)', pointBorderColor: 'white', pointBorderWidth: 2, pointRadius: 5, fill: true, tension: .4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} kg` } } }, scales: { y: { grid: { color: 'rgba(0,0,0,.04)' }, ticks: { font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+  });
+}
+
+function loadAndRenderCaloriesChart() {
+  const canvas = document.getElementById('calories-chart');
+  if (!canvas) return;
+  const dailyGoal = App.user?.daily_calories || 2000;
+  const labels = [], consumed = [], goalLine = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
+    const dayLogs = LS.get('food_logs_' + toDateStr(d), []);
+    consumed.push(Math.round(dayLogs.reduce((s, l) => s + (l.calories || 0), 0)));
+    goalLine.push(dailyGoal);
+  }
+
+  if (App.caloriesChartInst) {
+    App.caloriesChartInst.data.labels = labels;
+    App.caloriesChartInst.data.datasets[0].data = consumed;
+    App.caloriesChartInst.data.datasets[0].backgroundColor = consumed.map(v => v > dailyGoal ? 'rgba(239,68,68,.7)' : 'rgba(16,185,129,.7)');
+    App.caloriesChartInst.data.datasets[1].data = goalLine;
+    App.caloriesChartInst.update();
+    return;
+  }
+  App.caloriesChartInst = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels, datasets: [
+        { label: 'Consumido', data: consumed, backgroundColor: consumed.map(v => v > dailyGoal ? 'rgba(239,68,68,.7)' : 'rgba(16,185,129,.7)'), borderRadius: 8, borderSkipped: false },
+        { label: 'Meta', data: goalLine, type: 'line', borderColor: 'rgba(245,158,11,.8)', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom', labels: { font: { size: 11 }, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} kcal` } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+  });
+}
+
+async function logWeight() {
+  const input = document.getElementById('log-weight-input');
+  const weight = parseFloat(input?.value);
+  if (!weight || weight < 20 || weight > 300) { showToast('Ingresa un peso válido (20-300 kg)', 'error'); return; }
+
+  const todayStr = toDateStr(new Date());
+  const lsLogs = LS.get('weight_logs', []);
+  const idx = lsLogs.findIndex(l => l.date === todayStr);
+  if (idx >= 0) lsLogs[idx].weight = weight;
+  else lsLogs.push({ date: todayStr, weight });
+  LS.set('weight_logs', lsLogs);
+
+  App.user.weight = weight;
+  LS.set('user', App.user);
+  showToast(`⚖️ Peso registrado: ${weight} kg`, 'success');
+  if (input) input.value = '';
+
+  [App.weightChartInst, App.caloriesChartInst].forEach(c => { if (c) { c.destroy(); } });
+  App.weightChartInst = App.caloriesChartInst = null;
+  refreshProgress();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PERFIL
+   ══════════════════════════════════════════════════════════════ */
+function refreshProfile() {
+  const u = App.user;
+  if (!u) return;
+
+  const avatar = document.getElementById('profile-avatar');
+  if (avatar) avatar.textContent = u.gender === 'female' ? '👩' : '🧑';
+  const nameEl = document.getElementById('profile-name');
+  if (nameEl) nameEl.textContent = u.name || 'Usuario';
+  const badgeEl = document.getElementById('profile-goal-badge');
+  if (badgeEl) badgeEl.textContent = goalLabel(u.goal);
+
+  const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+  setEl('prof-bmr', u.bmr || 0);
+  setEl('prof-daily', u.daily_calories || 0);
+  setEl('prof-weight', u.weight || 0);
+  setEl('prof-height', u.height || 0);
+
+  const fields = { 'edit-name': u.name, 'edit-age': u.age, 'edit-height': u.height, 'edit-weight': u.weight, 'edit-activity': u.activity_level, 'edit-goal': u.goal };
+  Object.entries(fields).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val || ''; });
+  loadAIConfig();
+}
+
+window.toggleEditProfile = function () {
+  const form = document.getElementById('edit-profile-form');
+  if (form) {
+    form.classList.toggle('open');
+    // Si el formulario se abrió, hacemos un scroll suave hacia él
+    if (form.classList.contains('open')) {
+      setTimeout(() => {
+        form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150); // Pequeño retraso para dar tiempo a la animación CSS
+    }
+  }
+};
+
+async function saveProfile() {
+  const name = document.getElementById('edit-name')?.value.trim();
+  const age = parseFloat(document.getElementById('edit-age')?.value);
+  const height = parseFloat(document.getElementById('edit-height')?.value);
+  const weight = parseFloat(document.getElementById('edit-weight')?.value);
+  const activity = document.getElementById('edit-activity')?.value;
+  const goal = document.getElementById('edit-goal')?.value;
+
+  if (!name) { showToast('El nombre no puede estar vacío', 'error'); return; }
+  if (isNaN(age) || age < 12) { showToast('Edad inválida', 'error'); return; }
+  if (isNaN(height) || height < 100) { showToast('Altura inválida', 'error'); return; }
+  if (isNaN(weight) || weight < 30) { showToast('Peso inválido', 'error'); return; }
+
+  const bmr = calculateBMR(App.user.gender, age, weight, height);
+  const tdee = calculateTDEE(bmr, activity);
+  const dailyCal = calculateDailyCalories(tdee, goal);
+  const macros = calculateMacros(dailyCal, goal);
+
+  App.user = { ...App.user, name, age, height, weight, activity_level: activity, goal, bmr: Math.round(bmr), daily_calories: dailyCal, protein_goal: macros.protein, carbs_goal: macros.carbs, fat_goal: macros.fat };
+  LS.set('user', App.user);
+
+  setGreeting();
+  refreshProfile();
+  document.getElementById('edit-profile-form')?.classList.remove('open');
+  showToast('Perfil actualizado ✓', 'success');
+  if (App.currentPage === 'home') refreshDashboard();
+}
+
+function clearDataConfirm() {
+  if (!confirm('⚠️ Esto eliminará TODOS tus datos y reiniciará la aplicación. ¿Estás seguro?')) return;
+  Object.keys(localStorage).filter(k => k.startsWith('nt_')).forEach(k => localStorage.removeItem(k));
+  App.user = null; App.todayLogs = []; App.todayWater = 0;
+  [App.caloriesRingChart, App.weightChartInst, App.caloriesChartInst, App.waterChartInst].forEach(c => { if (c) { c.destroy(); } });
+  App.caloriesRingChart = App.weightChartInst = App.caloriesChartInst = App.waterChartInst = null;
+
+  currentStep = 0;
+  Object.keys(ob).forEach(k => ob[k] = '');
+  updateStepUI();
+  document.querySelectorAll('.gender-btn, .activity-card, .goal-card').forEach(el => el.classList.remove('selected'));
+  ['ob-name', 'ob-age', 'ob-height', 'ob-weight'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('results-preview')?.classList.add('hidden');
+
+  document.getElementById('onboarding-screen').classList.remove('hidden');
+  document.getElementById('onboarding-screen').style.opacity = '1';
+  document.getElementById('app').classList.add('hidden');
+  showToast('Datos eliminados', 'info', '🗑️');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ONBOARDING
+   ══════════════════════════════════════════════════════════════ */
+let currentStep = 0;
+const totalSteps = 4;
+const ob = { name: '', gender: '', age: 0, height: 0, weight: 0, activity: '', goal: '' };
+
+function nextStep() { if (!validateStep(currentStep)) return; if (currentStep < totalSteps - 1) { currentStep++; updateStepUI(); } }
+function prevStep() { if (currentStep > 0) { currentStep--; updateStepUI(); } }
+
+function updateStepUI() {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`step-${currentStep}`)?.classList.add('active');
+  document.querySelectorAll('.step-dot').forEach((d, i) => d.classList.toggle('active', i === currentStep));
+}
+
+function validateStep(step) {
+  switch (step) {
+    case 0:
+      ob.name = document.getElementById('ob-name').value.trim();
+      if (!ob.name) { showToast('Por favor ingresa tu nombre', 'error'); return false; }
+      if (!ob.gender) { showToast('Selecciona tu género', 'error'); return false; }
+      return true;
+    case 1:
+      ob.age = parseFloat(document.getElementById('ob-age').value);
+      ob.height = parseFloat(document.getElementById('ob-height').value);
+      ob.weight = parseFloat(document.getElementById('ob-weight').value);
+      if (isNaN(ob.age) || ob.age < 12 || ob.age > 100) { showToast('Ingresa una edad válida (12-100)', 'error'); return false; }
+      if (isNaN(ob.height) || ob.height < 100 || ob.height > 250) { showToast('Ingresa una altura válida (100-250 cm)', 'error'); return false; }
+      if (isNaN(ob.weight) || ob.weight < 30 || ob.weight > 300) { showToast('Ingresa un peso válido (30-300 kg)', 'error'); return false; }
+      return true;
+    case 2:
+      if (!ob.activity) { showToast('Selecciona tu nivel de actividad', 'error'); return false; }
+      return true;
+    default: return true;
+  }
+}
+
+function selectGender(btn) {
+  document.querySelectorAll('.gender-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  ob.gender = btn.dataset.gender;
+}
+
+function selectActivity(card) {
+  document.querySelectorAll('.activity-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  ob.activity = card.dataset.activity;
+}
+
+function selectGoal(card) {
+  document.querySelectorAll('.goal-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  ob.goal = card.dataset.goal;
+
+  if (ob.age && ob.weight && ob.height && ob.gender && ob.activity) {
+    const bmr = calculateBMR(ob.gender, ob.age, ob.weight, ob.height);
+    const tdee = calculateTDEE(bmr, ob.activity);
+    const dailyCal = calculateDailyCalories(tdee, ob.goal);
+    const macros = calculateMacros(dailyCal, ob.goal);
+
+    document.getElementById('res-calories').textContent = dailyCal;
+    document.getElementById('res-protein').textContent = macros.protein;
+    document.getElementById('res-carbs').textContent = macros.carbs;
+    document.getElementById('res-fat').textContent = macros.fat;
+    document.getElementById('results-preview')?.classList.remove('hidden');
+  }
+}
+
+async function finishOnboarding() {
+  if (!ob.goal) { showToast('Selecciona tu objetivo', 'error'); return; }
+
+  ob.age = parseFloat(document.getElementById('ob-age').value);
+  ob.height = parseFloat(document.getElementById('ob-height').value);
+  ob.weight = parseFloat(document.getElementById('ob-weight').value);
+
+  const bmr = calculateBMR(ob.gender, ob.age, ob.weight, ob.height);
+  const tdee = calculateTDEE(bmr, ob.activity);
+  const dailyCal = calculateDailyCalories(tdee, ob.goal);
+  const macros = calculateMacros(dailyCal, ob.goal);
+
+  const userData = {
+    id: 'user_' + Date.now(),
+    name: ob.name,
+    gender: ob.gender,
+    age: ob.age,
+    weight: ob.weight,
+    height: ob.height,
+    activity_level: ob.activity,
+    goal: ob.goal,
+    bmr: Math.round(bmr),
+    daily_calories: dailyCal,
+    protein_goal: macros.protein,
+    carbs_goal: macros.carbs,
+    fat_goal: macros.fat,
+    water_goal: 8
+  };
+
+  LS.set('user', userData);
+  App.user = userData;
+
+  const lsLogs = LS.get('weight_logs', []);
+  lsLogs.push({ date: toDateStr(new Date()), weight: ob.weight });
+  LS.set('weight_logs', lsLogs);
+
+  const screen = document.getElementById('onboarding-screen');
+  screen.style.transition = 'opacity .4s ease';
+  screen.style.opacity = '0';
+  setTimeout(() => {
+    screen.classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    setGreeting();
+    refreshDashboard();
+    showToast(`¡Bienvenido, ${ob.name.split(' ')[0]}! 🎉`, 'success', '🥗');
+  }, 400);
+}
+
+
+/* --------------------------------------------------------------
+   ESCANER INTELIGENTE (Smart Scanner)
+   Fase 1: html5-qrcode para EAN/UPC
+   Fase 2: Open Food Facts por codigo
+   Fase 2b: Fallback - foto etiqueta ? Gemini 1.5 Flash Vision
+   Fase 3/4: saveFoodLogLocal + refresh dashboard
+   -------------------------------------------------------------- */
+
+/* Estado interno */
+const ScannerState = {
+  html5Qr: null,
+  scanning: false,
+  selectedMeal: 'breakfast',
+  processed: false,
+};
+
+/* Helpers UI */
+function _scannerSetPhase(active) {
+  [1, 2, 3].forEach(n => {
+    const el = document.getElementById('phase-' + n);
+    if (!el) return;
+    el.classList.remove('active', 'done');
+    if (n < active) el.classList.add('done');
+    if (n === active) el.classList.add('active');
+  });
+}
+
+function _scannerSetStatus(text, spinning) {
+  spinning = spinning || false;
+  const spinner = document.getElementById('scanner-spinner');
+  const statusText = document.getElementById('scanner-status-text');
+  const subtitle = document.getElementById('scanner-subtitle');
+  if (spinner) spinner.style.display = spinning ? 'flex' : 'none';
+  if (statusText) statusText.textContent = text;
+  if (subtitle) subtitle.textContent = text;
+}
+
+function _scannerShowBarcodeResult(text) {
+  const el = document.getElementById('scanner-barcode-result');
+  if (!el) return;
+  el.textContent = '\uD83D\uDCE6 Codigo detectado: ' + text;
+  el.style.display = 'block';
+}
+
+function _scannerHideBarcodeResult() {
+  const el = document.getElementById('scanner-barcode-result');
+  if (el) el.style.display = 'none';
+}
+
+/* Abrir / cerrar modal */
+function openScannerModal() {
+  const modal = document.getElementById('scanner-container');
+  if (!modal) return;
+  ScannerState.processed = false;
+  _scannerHideBarcodeResult();
+  _scannerSetPhase(1);
+  _scannerSetStatus('Apunta al codigo de barras del producto', false);
+  document.querySelectorAll('#scanner-container .scanner-meal-pill').forEach(function (btn) {
+    btn.classList.toggle('active', btn.dataset.meal === ScannerState.selectedMeal);
+  });
+  modal.style.display = 'flex';
+  // Small delay to allow display:flex to apply before adding class for transition
+  setTimeout(() => modal.classList.add('open'), 10);
+  _startBarcodeScanner();
+}
+
+async function closeScannerModal() {
+  await _stopBarcodeScanner();
+  const modal = document.getElementById('scanner-container');
+  if (modal) {
+    modal.classList.remove('open');
+    setTimeout(() => { modal.style.display = 'none'; }, 300);
+  }
+  _scannerHideBarcodeResult();
+}
+
+/* Fase 1: iniciar html5-qrcode */
+async function _startBarcodeScanner() {
+  _scannerSetStatus('Inicializando camara...', true);
+  if (typeof Html5Qrcode === 'undefined') {
+    showToast('Libreria de escaneo no disponible. Verifica tu conexion a Internet.', 'error');
+    _scannerSetStatus('Libreria no disponible', false);
+    return;
+  }
+  try {
+    ScannerState.html5Qr = new Html5Qrcode('interactive-scanner');
+    ScannerState.scanning = true;
+    await ScannerState.html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 160 }, aspectRatio: 1.0, disableFlip: false },
+      _onBarcodeDetected,
+      function () { }
+    );
+    _scannerSetStatus('Apunta al codigo de barras del producto', false);
+  } catch (err) {
+    ScannerState.scanning = false;
+    console.error('[Scanner] Error camara:', err);
+    const msg = (err.name === 'NotAllowedError' || String(err).includes('Permission'))
+      ? 'Permiso de camara denegado. Activalo en la configuracion.'
+      : 'No se pudo acceder a la camara. Esta siendo usada por otra app?';
+    showToast(msg, 'error');
+    _scannerSetStatus(msg, false);
+  }
+}
+
+async function _stopBarcodeScanner() {
+  if (ScannerState.html5Qr && ScannerState.scanning) {
+    try { await ScannerState.html5Qr.stop(); } catch (_e) { /* silencioso */ }
+    ScannerState.scanning = false;
+  }
+  ScannerState.html5Qr = null;
+}
+
+async function _onBarcodeDetected(decodedText) {
+  if (ScannerState.processed) return;
+  ScannerState.processed = true;
+  await _stopBarcodeScanner();
+  _scannerShowBarcodeResult(decodedText);
+  _scannerSetPhase(2);
+  _scannerSetStatus('Buscando en Open Food Facts...', true);
+  await _queryOpenFoodFactsByBarcode(decodedText);
+}
+
+/* Fase 2: Open Food Facts por EAN/UPC */
+async function _queryOpenFoodFactsByBarcode(barcode) {
+  var url = 'https://world.openfoodfacts.org/api/v0/product/' + encodeURIComponent(barcode) + '.json';
+  try {
+    var res = await fetchWithTimeout(url, {}, 7000);
+    if (!res.ok) throw new Error('OFF ' + res.status);
+    var data = await res.json();
+    if (data.status === 1 && data.product) {
+      var p = data.product;
+      var n = p.nutriments || {};
+      var kcal = Number(n['energy-kcal_100g'] || (n.energy_100g ? n.energy_100g / 4.184 : 0));
+      var name = p.product_name_es || p.product_name || 'Producto escaneado';
+      if (kcal > 0) {
+        _scannerSetPhase(3);
+        _scannerSetStatus('\u2705 "' + name + '" encontrado', false);
+        _registerScannedProduct({
+          name: name,
+          calories_per_100g: Math.round(kcal),
+          protein_per_100g: parseFloat((Number(n.proteins_100g) || 0).toFixed(1)),
+          carbs_per_100g: parseFloat((Number(n.carbohydrates_100g) || 0).toFixed(1)),
+          fat_per_100g: parseFloat((Number(n.fat_100g) || 0).toFixed(1)),
+          fiber_per_100g: parseFloat((Number(n.fiber_100g) || 0).toFixed(1)),
+          sugar_per_100g: parseFloat((Number(n.sugars_100g) || 0).toFixed(1)),
+        });
+        return;
+      }
+    }
+    _triggerLabelPhotoFallback();
+  } catch (err) {
+    console.warn('[Scanner] Error OFF:', err.message);
+    _triggerLabelPhotoFallback();
+  }
+}
+
+/* Fase 2b: Fallback - foto de etiqueta */
+function _triggerLabelPhotoFallback() {
+  showToast('Producto no encontrado en base de datos. Analizando etiqueta con IA...', 'warning', '\uD83E\uDD16');
+  _scannerSetPhase(2);
+  _scannerSetStatus('Toma una foto de la Tabla Nutricional del empaque', false);
+  var labelInput = document.getElementById('scanner-label-input');
+  if (labelInput) { labelInput.value = ''; labelInput.click(); }
+}
+
+/* Fase 3 (fallback): Gemini 1.5 Flash Vision */
+async function _analyzeLabelWithGemini(imageFile) {
+  _scannerSetPhase(2);
+  _scannerSetStatus('Analizando etiqueta con IA...', true);
+  var cfg = getAIConfig();
+  if (!cfg) {
+    showToast('Necesitas una API Key de Gemini para analizar la etiqueta.', 'error');
+    _scannerSetStatus('Sin API Key de Gemini', false);
+    ScannerState.processed = false;
+    return;
+  }
+  try {
+    var processed = await processImageForAI(imageFile);
+    var systemPrompt = 'Extrae los datos nutricionales de esta etiqueta.\nDevuelve EXCLUSIVAMENTE un objeto JSON con:\n{ "name": "Nombre del producto", "calories": numero, "protein": numero, "carbs": numero, "fat": numero }\nLos valores deben ser por envase o pOrcion indicada.\nSi los datos son por 100g e identificas el tamano del envase, calcula para el envase completo si es posible.\nResponde SOLO el JSON, sin markdown, sin texto adicional.';
+    var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + cfg.apiKey;
+    var res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: systemPrompt },
+            { inline_data: { mime_type: 'image/jpeg', data: processed.base64 } }
+          ]
+        }],
+        generationConfig: { maxOutputTokens: 300, temperature: 0.1 }
+      })
+    });
+    if (!res.ok) {
+      var errData = await res.json().catch(function () { return {}; });
+      throw new Error('Gemini ' + res.status + ': ' + (errData && errData.error ? errData.error.message : ''));
+    }
+    var data = await res.json();
+    var rawText = (data && data.candidates && data.candidates[0] && data.candidates[0].content &&
+      data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+      data.candidates[0].content.parts[0].text) ? data.candidates[0].content.parts[0].text.trim() : '';
+    if (!rawText) throw new Error('Gemini no devolvio texto');
+    var clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    var jsonStr = (clean.match(/\{[\s\S]*\}/) || [clean])[0];
+    var parsed = JSON.parse(jsonStr);
+    var name = String(parsed.name || 'Producto escaneado').trim();
+    var calories = Math.max(0, Math.round(Number(parsed.calories) || 0));
+    var protein = parseFloat((Number(parsed.protein) || 0).toFixed(1));
+    var carbs = parseFloat((Number(parsed.carbs) || 0).toFixed(1));
+    var fat = parseFloat((Number(parsed.fat) || 0).toFixed(1));
+    if (!calories) throw new Error('No se encontraron calorias en la etiqueta');
+    _scannerSetPhase(3);
+    _scannerSetStatus('\u2756 "' + name + '" analizado con IA', false);
+    _registerScannedProduct({
+      name: name,
+      calories_per_100g: calories,
+      protein_per_100g: protein,
+      carbs_per_100g: carbs,
+      fat_per_100g: fat,
+      fiber_per_100g: 0,
+      sugar_per_100g: 0,
+    }, 100, 'ai_label');
+  } catch (err) {
+    console.error('[Scanner][Gemini]', err);
+    showToast('No pude leer la etiqueta. Registralo manualmente.', 'error');
+    _scannerSetStatus('Error al analizar etiqueta', false);
+    ScannerState.processed = false;
+  }
+}
+
+/* Fase 4: persistir en el diario */
+function _registerScannedProduct(food, qty, sourceOverride) {
+  qty = qty || 100;
+  sourceOverride = sourceOverride || 'off';
+  var ratio = qty / 100;
+  var dateStr = new Date().toLocaleDateString('en-CA');
+  var mealType = ScannerState.selectedMeal || 'breakfast';
+  var logData = {
+    id: 'scan_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+    user_id: (App.user && App.user.id) ? App.user.id : 'local',
+    date: dateStr,
+    meal_type: mealType,
+    food_name: food.name,
+    quantity: qty,
+    calories: Math.round((food.calories_per_100g || 0) * ratio),
+    protein: parseFloat(((food.protein_per_100g || 0) * ratio).toFixed(1)),
+    carbs: parseFloat(((food.carbs_per_100g || 0) * ratio).toFixed(1)),
+    fat: parseFloat(((food.fat_per_100g || 0) * ratio).toFixed(1)),
+    fiber: parseFloat(((food.fiber_per_100g || 0) * ratio).toFixed(1)),
+    sugar: parseFloat(((food.sugar_per_100g || 0) * ratio).toFixed(1)),
+    source: sourceOverride,
+  };
+  saveFoodLogLocal(logData);
+  var mealNames = { breakfast: 'Desayuno', lunch: 'Almuerzo', dinner: 'Cena', snack: 'Snack' };
+  showToast('\uD83D\uDCE6 "' + food.name + '" anadido a ' + (mealNames[mealType] || 'Comida') + ' \u2713', 'success', '\uD83D\uDCE6');
+  closeScannerModal();
+  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'diary') refreshDiary();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BACKUP DE DATOS & EVENTOS GENERALES
+   ══════════════════════════════════════════════════════════════ */
+function exportData() {
+  if (localStorage.length === 0) {
+    showToast("Error: No hay datos para respaldar.", "error");
+    return;
+  }
+
+  try {
+    const backup = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      backup[key] = localStorage.getItem(key);
+    }
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'NutriTrack_Backup.json';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast("Respaldo exportado exitosamente.", "success");
+  } catch (error) {
+    console.error("Error exportando datos:", error);
+    showToast("Hubo un error al exportar los datos.", "error");
+  }
+}
+
+function importData(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const backup = JSON.parse(e.target.result);
+      if (!confirm('¿Estás seguro de reemplazar todos tus datos actuales con este respaldo?')) {
+        event.target.value = '';
+        return;
+      }
+
+      localStorage.clear();
+      for (const key in backup) {
+        if (backup.hasOwnProperty(key)) {
+          localStorage.setItem(key, backup[key]);
+        }
+      }
+
+      showToast("Datos importados exitosamente. Recargando...", "success");
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+
+    } catch (error) {
+      console.error("Error importando datos:", error);
+      showToast("Error al leer el archivo de respaldo. Verifica que sea un JSON válido.", "error");
+    }
+    event.target.value = '';
+  };
+
+  reader.readAsText(file);
+}
+
+/* Bootstrap de eventos: sin eventos inline */
+function initScannerEvents() {
+  var btnOpen = document.getElementById('btn-scan-product');
+  if (btnOpen) btnOpen.addEventListener('click', openScannerModal);
+
+  var btnClose = document.getElementById('scanner-close-btn');
+  if (btnClose) btnClose.addEventListener('click', closeScannerModal);
+
+  var overlay = document.getElementById('scanner-container');
+  if (overlay) {
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeScannerModal();
+    });
+  }
+
+  var btnLabel = document.getElementById('btn-photo-label');
+  if (btnLabel) {
+    btnLabel.addEventListener('click', function () {
+      var inp = document.getElementById('scanner-label-input');
+      if (inp) { inp.value = ''; inp.click(); }
+    });
+  }
+
+  var labelInput = document.getElementById('scanner-label-input');
+  if (labelInput) {
+    labelInput.addEventListener('change', async function (e) {
+      var file = e.target && e.target.files && e.target.files[0];
+      if (!file) return;
+      ScannerState.processed = true;
+      await _analyzeLabelWithGemini(file);
+    });
+  }
+
+  document.querySelectorAll('#scanner-container .scanner-meal-pill').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('#scanner-container .scanner-meal-pill')
+        .forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      ScannerState.selectedMeal = btn.dataset.meal;
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Inicialización de escáner (preservada)
+  initScannerEvents();
+
+  // 2. RECONECTAR: Exportar Datos (NO TOCAR)
+  const btnExport = document.getElementById('btn-export');
+  if (btnExport) {
+    btnExport.addEventListener('click', exportData);
+  }
+
+  // 3. RECONECTAR: Importar Datos (NO TOCAR)
+  const btnImport = document.getElementById('btn-import');
+  const fileInput = document.getElementById('import-input');
+
+  if (btnImport && fileInput) {
+    btnImport.addEventListener('click', () => {
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', importData);
+  }
+});
+
+// ============================================================
+// DARK MODE LOGIC (PERSISTENCIA Y TOGGLE)
+// ============================================================
+
+window.toggleDarkMode = function () {
+  const body = document.body;
+  body.classList.toggle('dark-theme');
+
+  // Guardar estado en localStorage
+  const isDark = body.classList.contains('dark-theme');
+  localStorage.setItem('nutritrack_dark_mode', isDark);
+};
+
+// Autocargar tema basado en las preferencias previas al cargar la app
+window.addEventListener('load', () => {
+  const savedDarkMode = localStorage.getItem('nutritrack_dark_mode');
+  if (savedDarkMode === 'true') {
+    document.body.classList.add('dark-theme');
+  }
+});
+
+// ============================================================
+// CHEF IA (FASE 3)
+// ============================================================
+
+window.openChefAI = async function () {
+  if (!App.user) {
+    showToast('Primero completa tu perfil', 'error');
+    return;
+  }
+  if (!getAIConfig()) {
+    showToast('Configura tu API Key de Gemini en el perfil', 'error');
+    return;
+  }
+
+  const todayStr = toDateStr(new Date());
+  App.todayLogs = LS.get('food_logs_' + todayStr, []);
+  const totals = computeTotals(App.todayLogs);
+
+  const remaining = {
+    calories: Math.max(0, App.user.daily_calories - totals.calories),
+    protein: Math.max(0, App.user.protein_goal - totals.protein),
+    carbs: Math.max(0, App.user.carbs_goal - totals.carbs),
+    fat: Math.max(0, App.user.fat_goal - totals.fat)
+  };
+
+  const modal = document.getElementById('chef-ai-modal');
+  const container = document.getElementById('chef-results-container');
+  if (modal) modal.classList.add('open');
+  if (container) {
+    container.innerHTML = `
+      <div class="ai-processing-inner" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding:30px 0;">
+        <div class="scan-orb"></div>
+        <div style="text-align:center;">
+          <div class="ai-processing-title" style="font-weight:700; font-size:1.1rem; margin-bottom:4px">👨‍🍳 Chef IA Pensando...</div>
+          <div class="ai-processing-sub" style="font-size:0.85rem; color:var(--gray-500)">Generando opciones deliciosas y locales</div>
+        </div>
+      </div>
+    `;
+  }
+
+  await fetchChefSuggestions(remaining);
+};
+
+window.fetchChefSuggestions = async function (macros) {
+  const currentCfg = getAIConfig();
+  if (!currentCfg || !currentCfg.apiKey) {
+    showToast('Falta API Key', 'error');
+    closeChefModal();
+    return;
+  }
+
+  const promptText = `
+Eres un Chef / Nutricionista experto en comida colombiana moderna enfocada en la región de Antioquia (estilo Medellín).
+Tengo los siguientes macros restantes en mi día:
+- Calorías: ${Math.round(macros.calories)} kcal
+- Proteínas: ${Math.round(macros.protein)} g
+- Carbohidratos: ${Math.round(macros.carbs)} g
+- Grasas: ${Math.round(macros.fat)} g
+
+Propón exactly 3 comidas o preparaciones locales completas (nombre llamativo en español) que cuadren muy bien (aproximadamente, no tienen que ser exactas, pero cercanas) con los macros faltantes y que sumen todo lo que falta. Es decir, el usuario solo necesita comer UNA de estas 3 opciones para acercarse a completar sus macros diarios.
+
+LIMITACIONES IMPORTANTES: 
+- Exijo explícitamente un Arreglo JSON Puro ([ {...} ]) sin ninguna llave raíz como "recetas".
+- Pide obligatoriamente los campos: "ingredients" (un arreglo de strings) e "instructions" (un string único con pasos separados por el símbolo •).
+- REGLA DE ORO / CRÍTICA: NO uses saltos de línea y NO uses comillas dobles internas dentro de los textos (ni de ingredients ni de instructions) para no romper el parseo del JSON.
+
+Ejemplo estricto del formato esperado:
+[
+  {
+    "name": "Bandeja Paisa Light",
+    "calories": 600,
+    "protein": 50,
+    "carbs": 40,
+    "fat": 20,
+    "ingredients": ["1 Arepa", "1 Huevo"],
+    "instructions": "Paso 1... • Paso 2... • Paso 3..."
+  }
+]
+`;
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentCfg.apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2048
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error('Gemini ' + res.status + ': ' + (errData?.error?.message || 'Error desconocido'));
+    }
+
+    const data = await res.json();
+    let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!rawText) throw new Error('Respuesta vacía de la IA');
+
+    // El "Extractor y Reparador Mutante" 
+    let cleanText = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const startIndex = cleanText.indexOf('[');
+    if (startIndex === -1) throw new Error('La IA no devolvió un formato de arreglo válido.');
+    cleanText = cleanText.substring(startIndex);
+
+    let parsed;
+    try {
+      // Intento 1: Limpieza normal (esperando que sea un JSON íntegro)
+      let baseText = cleanText.substring(0, cleanText.lastIndexOf(']') + 1) || cleanText;
+      baseText = baseText.replace(/[\n\r\t]/g, ' ');
+      parsed = JSON.parse(baseText);
+    } catch (e1) {
+      console.warn("Intento 1 falló por truncamiento. Iniciando Auto-Reparación...", e1);
+      
+      // Intento 2: Reparador Dinámico de Truncamiento
+      let txt = cleanText.replace(/[\n\r\t]/g, ' '); // Eliminar quiebres
+      let inString = false, escape = false;
+      let openBraces = 0, openBrackets = 0;
+      
+      // Contar estructura real
+      for (let i = 0; i < txt.length; i++) {
+        let char = txt[i];
+        if (escape) { escape = false; continue; }
+        if (char === '\\') { escape = true; continue; }
+        if (char === '"') { inString = !inString; continue; }
+        if (!inString) {
+          if (char === '{') openBraces++;
+          if (char === '}') { if (openBraces > 0) openBraces--; }
+          if (char === '[') openBrackets++;
+          if (char === ']') { if (openBrackets > 0) openBrackets--; }
+        }
+      }
+      
+      // Autocompletar y sellar el JSON cortado o mutilado
+      if (inString) txt += '"';
+      while (openBraces > 0) { txt += '}'; openBraces--; }
+      while (openBrackets > 0) { txt += ']'; openBrackets--; }
+      
+      // Remover comas traicioneras al final antes de cerrar
+      txt = txt.replace(/,\s*([\]}])/g, '$1');
+      txt = txt.replace(/\s+/g, ' ');
+      
+      try {
+        parsed = JSON.parse(txt);
+      } catch (e2) {
+        console.error("Fallo definitivo tras reparación:", txt);
+        console.warn("Iniciando Extracción Regex de Emergencia...");
+        
+        // Intento 3: Extracción Regex de Emergencia (Si todo falla)
+        parsed = [];
+        const recipeRegex = /"name"\s*:\s*"([^"]+)"\s*,\s*"calories"\s*:\s*(\d+)\s*,\s*"protein"\s*:\s*(\d+)\s*,\s*"carbs"\s*:\s*(\d+)\s*,\s*"fat"\s*:\s*(\d+)/g;
+        let match;
+        while ((match = recipeRegex.exec(txt)) !== null) {
+           parsed.push({
+             name: match[1],
+             calories: parseInt(match[2]),
+             protein: parseInt(match[3]),
+             carbs: parseInt(match[4]),
+             fat: parseInt(match[5]),
+             ingredients: ["Ingredientes extraídos por error (Revisa con la IA)"],
+             instructions: "Instrucciones no procesables por truncamiento crítico."
+           });
+        }
+        
+        if (parsed.length === 0) {
+            throw new Error('El JSON estaba tan mutilado que no se pudo extraer ninguna receta.');
+        }
+      }
+    }
+
+    // Por seguridad, aseguramos que sea un arreglo válido y tenga elementos
+    const finalRecipes = Array.isArray(parsed) ? parsed : (parsed.recetas || []);
+
+    renderChefRecipes(finalRecipes);
+  } catch (error) {
+    console.error('Error fetching chef suggestions:', error);
+    const container = document.getElementById('chef-results-container');
+    if (container) {
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">❌</div>
+        <p>Hubo un error contactando al Chef IA.</p>
+        <small style="color: var(--danger)">Detalle: ${error.message}</small>
+      </div>`;
+    }
+  }
+};
+
+window.currentChefRecipesList = []; // Array to store current recipes
+
+window.renderChefRecipes = function (recipes) {
+  window.currentChefRecipesList = recipes;
+  const container = document.getElementById('chef-results-container');
+  if (!container) return;
+  
+  container.style.display = 'block';
+  let detailView = document.getElementById('chef-detail-container');
+  if (detailView) detailView.style.display = 'none';
+
+  container.innerHTML = '';
+  if (!recipes || !recipes.length) {
+    container.innerHTML = `<div class="empty-state">No se pudieron generar sugerencias.</div>`;
+    return;
+  }
+
+  recipes.forEach((r, idx) => {
+    const card = document.createElement('div');
+    card.className = 'chef-recipe-card fade-in';
+    card.style.animationDelay = (idx * 0.1) + 's';
+
+    card.innerHTML = `
+      <div class="chef-recipe-title">${escapeHtml(r.name)}</div>
+      <div class="chef-recipe-macros">
+        <span class="chef-macro-pill cal">🔥 ${Math.round(r.calories)} kcal</span>
+        <span class="chef-macro-pill pro">🥩 ${Math.round(r.protein)}g P</span>
+        <span class="chef-macro-pill car">🍞 ${Math.round(r.carbs)}g C</span>
+        <span class="chef-macro-pill fat">🥑 ${Math.round(r.fat)}g G</span>
+      </div>
+      <button class="btn-primary" style="width: 100%; font-size: 0.95rem; margin-top: 15px;" onclick="showRecipeDetails(${idx})">Ver Receta 📖</button>
+    `;
+    container.appendChild(card);
+  });
+};
+
+window.showRecipeDetails = function (index) {
+  const container = document.getElementById('chef-results-container');
+  if (container) container.style.display = 'none';
+  
+  let detailView = document.getElementById('chef-detail-container');
+  if (!detailView) {
+    detailView = document.createElement('div');
+    detailView.id = 'chef-detail-container';
+    if (container && container.parentNode) {
+      container.parentNode.insertBefore(detailView, container.nextSibling);
+    }
+  }
+  
+  detailView.style.display = 'block';
+  
+  const r = window.currentChefRecipesList[index];
+  if (!r) return;
+
+  const ingredientsHtml = Array.isArray(r.ingredients) && r.ingredients.length > 0 
+    ? `<ul>${r.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}</ul>`
+    : '<p>Ingredientes no especificados.</p>';
+    
+  const instructionsHtml = typeof r.instructions === 'string' && r.instructions.trim() !== ''
+    ? r.instructions.split('•').filter(step => step.trim() !== '').map((step, i) => `<p><strong>${i + 1}.</strong> ${escapeHtml(step.trim())}</p>`).join('')
+    : '<p>Instrucciones no especificadas.</p>';
+
+  detailView.innerHTML = `
+    <div class="recipe-detail-view fade-in">
+      <div class="chef-recipe-title" style="font-size: 1.4rem; text-align: center; margin-bottom: 15px;">${escapeHtml(r.name)}</div>
+      <div class="chef-recipe-macros" style="justify-content: center; margin-bottom: 20px;">
+        <span class="chef-macro-pill cal">🔥 ${Math.round(r.calories)} kcal</span>
+        <span class="chef-macro-pill pro">🥩 ${Math.round(r.protein)}g P</span>
+        <span class="chef-macro-pill car">🍞 ${Math.round(r.carbs)}g C</span>
+        <span class="chef-macro-pill fat">🥑 ${Math.round(r.fat)}g G</span>
+      </div>
+      
+      <div class="recipe-section" style="margin-bottom: 20px;">
+        <h4 style="margin-bottom:10px; color:var(--emerald-600); font-weight: 700;">Ingredientes:</h4>
+        ${ingredientsHtml}
+      </div>
+      
+      <div class="recipe-section" style="margin-top: 20px;">
+        <h4 style="margin-bottom:10px; color:var(--emerald-600); font-weight: 700;">Preparación:</h4>
+        ${instructionsHtml}
+      </div>
+      
+      <div style="display: flex; gap: 10px; margin-top: 25px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="hideRecipeDetails()">Volver ⬅️</button>
+        <button class="btn-primary" style="flex: 2;" onclick='openChefAddModal(${JSON.stringify(r).replace(/'/g, "&#39;")})'>+ Añadir al Diario</button>
+      </div>
+    </div>
+  `;
+};
+
+window.hideRecipeDetails = function () {
+  const detailView = document.getElementById('chef-detail-container');
+  if (detailView) detailView.style.display = 'none';
+  const container = document.getElementById('chef-results-container');
+  if (container) container.style.display = 'block';
+};
+
+window.closeChefModal = function (event) {
+  if (event && event.target !== document.getElementById('chef-ai-modal')) return;
+  document.getElementById('chef-ai-modal')?.classList.remove('open');
+  document.getElementById('chef-meal-selector-ui')?.classList.add('hidden');
+  const detailView = document.getElementById('chef-detail-container');
+  if (detailView) detailView.style.display = 'none';
+  const container = document.getElementById('chef-results-container');
+  if (container) container.style.display = 'block';
+};
+
+let currentChefRecipe = null;
+window.openChefAddModal = function (recipe) {
+  currentChefRecipe = recipe;
+  const selector = document.getElementById('chef-meal-selector-ui');
+  if (selector) selector.classList.remove('hidden');
+};
+
+window.addChefRecipeToDiary = async function (targetMeal) {
+  if (!currentChefRecipe) return;
+  const logData = {
+    id: 'chef_' + Date.now(),
+    user_id: App.user?.id || 'local',
+    date: toDateStr(App.currentDiaryDate),
+    meal_type: targetMeal,
+    food_name: currentChefRecipe.name,
+    quantity: 1, // 1 porción sugerida por el Chef AI
+    calories: currentChefRecipe.calories,
+    protein: currentChefRecipe.protein,
+    carbs: currentChefRecipe.carbs,
+    fat: currentChefRecipe.fat,
+    fiber: 0,
+    sugar: 0,
+    source: 'ai_chef'
+  };
+  saveFoodLogLocal(logData);
+  const selector = document.getElementById('chef-meal-selector-ui');
+  if (selector) selector.classList.add('hidden');
+  closeChefModal();
+  showToast(`${currentChefRecipe.name} añadido ✓`, 'success');
+  currentChefRecipe = null;
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+};

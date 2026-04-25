@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#059669"/>
+  <meta name="application-name" content="NutriTrack Pro"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="description" content="NutriTrack Pro – Tu asistente de nutrición inteligente con IA"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="NutriTrack Pro"/>
+  <title>NutriTrack Pro</title>
+
+  <link rel="manifest" href="./manifest.json"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png"/>
+  <link rel="apple-touch-icon" href="./icons/icon-192.png"/>
+
+  <!-- Google Fonts: Sora (headings) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Html5-QRCode: Escáner de códigos de barras y QR -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="css/style.css?v=20.0"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     ONBOARDING
+══════════════════════════════════════════════ -->
+<div id="onboarding-screen">
+
+  <div class="onboarding-header">
+    <div class="onboarding-logo"><i data-lucide="leaf"></i></div>
+    <h1>NutriTrack Pro</h1>
+    <p>Tu coach de nutrición inteligente con IA</p>
+  </div>
+
+  <div class="onboarding-steps" id="onboarding-dots">
+    <div class="step-dot active" data-step="0"></div>
+    <div class="step-dot" data-step="1"></div>
+    <div class="step-dot" data-step="2"></div>
+    <div class="step-dot" data-step="3"></div>
+  </div>
+
+  <!-- Step 0: Nombre & Género -->
+  <div class="step-panel active" id="step-0">
+    <div class="step-card">
+      <h2>¡Bienvenido! <i data-lucide="hand" class="lucide-inline"></i></h2>
+      <p class="step-subtitle">Cuéntanos sobre ti para personalizar tu experiencia.</p>
+      <div class="form-group">
+        <label class="form-label">Tu nombre</label>
+        <input type="text" class="form-input" id="ob-name" placeholder="Ej. María García" autocomplete="given-name"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Género</label>
+        <div class="gender-picker">
+          <button class="gender-btn" data-gender="male" onclick="selectGender(this)">
+            <span class="icon"><i data-lucide="user"></i></span>Hombre
+          </button>
+          <button class="gender-btn" data-gender="female" onclick="selectGender(this)">
+            <span class="icon"><i data-lucide="user-round"></i></span>Mujer
+          </button>
+        </div>
+      </div>
+      <div class="step-nav">
+        <button class="btn-primary" onclick="nextStep()">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 1: Medidas -->
+  <div class="step-panel" id="step-1">
+    <div class="step-card">
+      <h2>Tus medidas <i data-lucide="ruler" class="lucide-inline"></i></h2>
+      <p class="step-subtitle">Calculamos tu metabolismo basal con estos datos.</p>
+      <div class="input-row">
+        <div class="form-group">
+          <label class="form-label">Edad (años)</label>
+          <input type="number" class="form-input" id="ob-age" placeholder="25" min="12" max="100"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Altura (cm)</label>
+          <input type="number" class="form-input" id="ob-height" placeholder="170" min="100" max="250"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Peso actual (kg)</label>
+        <input type="number" class="form-input" id="ob-weight" placeholder="70.0" step="0.1" min="30" max="300"/>
+      </div>
+      <div class="step-nav">
+        <button class="btn-secondary" onclick="prevStep()">← Atrás</button>
+        <button class="btn-primary" onclick="nextStep()">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Actividad -->
+  <div class="step-panel" id="step-2">
+    <div class="step-card">
+      <h2>Nivel de actividad <i data-lucide="dumbbell" class="lucide-inline"></i></h2>
+      <p class="step-subtitle">¿Cuánto te mueves durante la semana?</p>
+      <div class="activity-grid">
+        <div class="activity-card" data-activity="sedentary" onclick="selectActivity(this)">
+          <span class="act-icon"><i data-lucide="sofa"></i></span>
+          <div class="act-info"><h4>Sedentario</h4><p>Poco o ningún ejercicio</p></div>
+        </div>
+        <div class="activity-card" data-activity="light" onclick="selectActivity(this)">
+          <span class="act-icon"><i data-lucide="person-standing"></i></span>
+          <div class="act-info"><h4>Ligero</h4><p>Ejercicio 1-3 días/semana</p></div>
+        </div>
+        <div class="activity-card" data-activity="moderate" onclick="selectActivity(this)">
+          <span class="act-icon"><i data-lucide="bike"></i></span>
+          <div class="act-info"><h4>Moderado</h4><p>Ejercicio 3-5 días/semana</p></div>
+        </div>
+        <div class="activity-card" data-activity="active" onclick="selectActivity(this)">
+          <span class="act-icon"><i data-lucide="dumbbell"></i></span>
+          <div class="act-info"><h4>Activo</h4><p>Ejercicio 6-7 días/semana</p></div>
+        </div>
+        <div class="activity-card" data-activity="very_active" onclick="selectActivity(this)">
+          <span class="act-icon"><i data-lucide="flame"></i></span>
+          <div class="act-info"><h4>Muy activo</h4><p>Entrenamiento intenso 2x/día</p></div>
+        </div>
+      </div>
+      <div class="step-nav mt-4">
+        <button class="btn-secondary" onclick="prevStep()">← Atrás</button>
+        <button class="btn-primary" onclick="nextStep()">Continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Objetivo -->
+  <div class="step-panel" id="step-3">
+    <div class="step-card">
+      <h2>Tu objetivo <i data-lucide="target" class="lucide-inline"></i></h2>
+      <p class="step-subtitle">Selecciona lo que quieres lograr.</p>
+      <div class="goal-grid">
+        <div class="goal-card" data-goal="lose_weight" onclick="selectGoal(this)">
+          <div class="goal-icon" style="background:#fef3c7"><i data-lucide="trending-down"></i></div>
+          <div class="goal-info"><h4>Perder peso</h4><p>Déficit calórico moderado</p></div>
+        </div>
+        <div class="goal-card" data-goal="maintain" onclick="selectGoal(this)">
+          <div class="goal-icon" style="background:#d1fae5"><i data-lucide="scale"></i></div>
+          <div class="goal-info"><h4>Mantener peso</h4><p>Equilibrio calórico</p></div>
+        </div>
+        <div class="goal-card" data-goal="gain_muscle" onclick="selectGoal(this)">
+          <div class="goal-icon" style="background:#ede9fe"><i data-lucide="trending-up"></i></div>
+          <div class="goal-info"><h4>Ganar músculo</h4><p>Superávit calórico controlado</p></div>
+        </div>
+      </div>
+      <div id="results-preview" class="hidden mt-4">
+        <div class="results-card">
+          <h3>Tu objetivo diario</h3>
+          <div class="big-cal"><span id="res-calories">0</span> <span>kcal</span></div>
+          <div class="macro-pills">
+            <div class="macro-pill"><i data-lucide="beef" class="lucide-pill"></i> Prot: <span id="res-protein">0</span>g</div>
+            <div class="macro-pill"><i data-lucide="wheat" class="lucide-pill"></i> Carbs: <span id="res-carbs">0</span>g</div>
+            <div class="macro-pill"><i data-lucide="droplet" class="lucide-pill"></i> Grasa: <span id="res-fat">0</span>g</div>
+          </div>
+        </div>
+      </div>
+      <div class="step-nav mt-4">
+        <button class="btn-secondary" onclick="prevStep()">← Atrás</button>
+        <button class="btn-primary" id="btn-finish" onclick="finishOnboarding()"><i data-lucide="rocket" class="lucide-pill"></i> ¡Empezar!</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /onboarding -->
+
+
+<!-- ══════════════════════════════════════════════
+     MAIN APP SHELL
+══════════════════════════════════════════════ -->
+<div id="app" class="hidden">
+
+  <!-- Top Bar -->
+  <header class="topbar" id="main-topbar">
+    <div class="topbar-logo">
+      <span class="logo-icon"><i data-lucide="leaf"></i></span>
+      <span class="topbar-title">NutriTrack Pro</span>
+    </div>
+    <button class="topbar-action" id="topbar-action-btn" title="Acción">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+  </header>
+
+  <!-- ─── PAGE: DASHBOARD ─── -->
+  <main class="page active" id="page-home">
+
+    <div class="greeting-section">
+      <h2 id="greeting-text">Buenos días 👋</h2>
+      <p id="greeting-date">Hoy es lunes</p>
+    </div>
+
+    <!-- Calories Ring Card -->
+    <div class="calories-card">
+      <div class="calories-ring-wrap">
+        <canvas id="calories-ring" width="110" height="110"></canvas>
+        <div class="calories-ring-center" style="color:white">
+          <div class="ring-cal-number" id="ring-remaining">0</div>
+          <div class="ring-cal-label">restantes</div>
+        </div>
+      </div>
+      <div class="calories-info">
+        <div class="cal-stat">
+          <div class="cal-stat-label">Consumido</div>
+          <div class="cal-stat-value"><span id="dash-consumed">0</span><span class="cal-stat-unit"> kcal</span></div>
+        </div>
+        <div class="cal-divider"></div>
+        <div class="cal-stat">
+          <div class="cal-stat-label">Meta diaria</div>
+          <div class="cal-stat-value"><span id="dash-goal">2000</span><span class="cal-stat-unit"> kcal</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Macros -->
+    <div class="macros-grid">
+      <div class="macro-card protein">
+        <div class="macro-name">Proteína</div>
+        <div class="macro-value"><span id="dash-protein">0</span><span>g</span></div>
+        <div class="macro-goal">Meta: <span id="dash-protein-goal">0</span>g</div>
+        <div class="macro-progress"><div class="macro-bar" id="bar-protein" style="width:0%"></div></div>
+      </div>
+      <div class="macro-card carbs">
+        <div class="macro-name">Carbos</div>
+        <div class="macro-value"><span id="dash-carbs">0</span><span>g</span></div>
+        <div class="macro-goal">Meta: <span id="dash-carbs-goal">0</span>g</div>
+        <div class="macro-progress"><div class="macro-bar" id="bar-carbs" style="width:0%"></div></div>
+      </div>
+      <div class="macro-card fat">
+        <div class="macro-name">Grasas</div>
+        <div class="macro-value"><span id="dash-fat">0</span><span>g</span></div>
+        <div class="macro-goal">Meta: <span id="dash-fat-goal">0</span>g</div>
+        <div class="macro-progress"><div class="macro-bar" id="bar-fat" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- Meal Summary -->
+    <div class="section-header">
+      <span class="section-title">Comidas de hoy</span>
+      <button class="section-link" onclick="navigateTo('diary')">Ver todo</button>
+    </div>
+    <div class="meal-summary-grid">
+      <div class="meal-mini-card" onclick="navigateTo('diary')">
+        <div class="meal-mini-icon"><i data-lucide="sunrise"></i></div>
+        <div class="meal-mini-name">Desayuno</div>
+        <div class="meal-mini-cal" id="mini-breakfast">0 kcal</div>
+      </div>
+      <div class="meal-mini-card" onclick="navigateTo('diary')">
+        <div class="meal-mini-icon"><i data-lucide="sun"></i></div>
+        <div class="meal-mini-name">Almuerzo</div>
+        <div class="meal-mini-cal" id="mini-lunch">0 kcal</div>
+      </div>
+      <div class="meal-mini-card" onclick="navigateTo('diary')">
+        <div class="meal-mini-icon"><i data-lucide="moon"></i></div>
+        <div class="meal-mini-name">Cena</div>
+        <div class="meal-mini-cal" id="mini-dinner">0 kcal</div>
+      </div>
+      <div class="meal-mini-card" onclick="navigateTo('diary')">
+        <div class="meal-mini-icon"><i data-lucide="apple"></i></div>
+        <div class="meal-mini-name">Snacks</div>
+        <div class="meal-mini-cal" id="mini-snack">0 kcal</div>
+      </div>
+    </div>
+
+    <!-- Water Widget -->
+    <div class="water-widget">
+      <div class="water-header">
+        <div class="water-title"><i data-lucide="droplets" class="lucide-pill"></i> Hidratación</div>
+        <div class="water-count"><span id="dash-water">0</span>/<span id="dash-water-goal">8</span> vasos</div>
+      </div>
+      <div class="water-glasses" id="dash-water-glasses"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         SMART SCANNER BUTTON
+    ════════════════════════════════════════ -->
+    <button class="btn-scan-product" id="btn-scan-product" type="button">
+      <span class="scan-btn-icon"><i data-lucide="scan-barcode"></i></span>
+      <div class="scan-btn-text">
+        <div class="scan-btn-title">Escáner Inteligente</div>
+        <div class="scan-btn-sub">Escanea código de barras o etiqueta nutricional</div>
+      </div>
+      <span class="scan-btn-arrow">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </span>
+    </button>
+
+    <!-- ══════════════════════════════════════════════
+         SMART SCANNER MODAL (MOVED INSIDE HOME TAB)
+    ══════════════════════════════════════════════ -->
+    <div class="scanner-overlay" id="scanner-container" aria-modal="true" role="dialog" aria-label="Escáner de productos" style="display: none;">
+      <div class="scanner-sheet">
+
+        <!-- Header -->
+        <div class="scanner-header">
+          <div class="scanner-header-left">
+            <span class="scanner-title-icon"><i data-lucide="scan-barcode"></i></span>
+            <div>
+              <div class="scanner-title">Escáner Inteligente</div>
+              <div class="scanner-subtitle" id="scanner-subtitle">Apunta al código de barras del producto</div>
+            </div>
+          </div>
+          <button class="scanner-close-btn" id="scanner-close-btn" type="button" title="Cerrar escáner">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- Phase indicator -->
+        <div class="scanner-phases" id="scanner-phases">
+          <div class="scanner-phase active" id="phase-1">
+            <span class="phase-num">1</span>
+            <span class="phase-lbl">Código de barras</span>
+          </div>
+          <div class="scanner-phase-sep">→</div>
+          <div class="scanner-phase" id="phase-2">
+            <span class="phase-num">2</span>
+            <span class="phase-lbl">API / Etiqueta IA</span>
+          </div>
+          <div class="scanner-phase-sep">→</div>
+          <div class="scanner-phase" id="phase-3">
+            <span class="phase-num">3</span>
+            <span class="phase-lbl">Registro</span>
+          </div>
+        </div>
+
+        <!-- Camera / Scanner Area -->
+        <div class="scanner-camera-wrap">
+          <div id="interactive-scanner" class="scanner-viewport"></div>
+          <div class="scanner-laser"></div>
+        </div>
+
+        <!-- Status bar inside modal -->
+        <div class="scanner-status" id="scanner-status">
+          <div class="scanner-spinner" id="scanner-spinner" style="display:none">
+            <div class="scan-orb"></div>
+            <span id="scanner-status-text">Inicializando cámara…</span>
+          </div>
+          <div id="scanner-barcode-result" class="scanner-barcode-result" style="display:none"></div>
+        </div>
+
+        <!-- Actions -->
+        <div class="scanner-actions">
+          <!-- Meal selector -->
+          <div class="scanner-meal-row">
+            <span class="scanner-meal-label">Añadir a:</span>
+            <div class="scanner-meal-pills">
+              <button class="scanner-meal-pill active" data-meal="breakfast" type="button"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
+              <button class="scanner-meal-pill" data-meal="lunch" type="button"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
+              <button class="scanner-meal-pill" data-meal="dinner" type="button"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
+              <button class="scanner-meal-pill" data-meal="snack" type="button"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
+            </div>
+          </div>
+
+          <!-- Photo label fallback -->
+          <button class="btn-photo-label" id="btn-photo-label" type="button">
+            <i data-lucide="camera" class="lucide-pill"></i> Tomar foto a la Tabla Nutricional
+          </button>
+
+          <!-- Hidden file input for label photo -->
+          <input type="file" id="scanner-label-input" class="hidden" accept="image/*" capture="environment"/>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         AI COACH INSIGHTS CARD
+    ════════════════════════════════════════ -->
+    <div class="ai-insight-card" id="ai-insight-card">
+      <div class="ai-insight-header">
+        <div class="ai-insight-badge">
+          <span class="ai-orb"></span>
+          <span>Coach IA</span>
+        </div>
+        <button class="ai-insight-refresh" id="btn-ai-insight-refresh" title="Actualizar consejo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+      </div>
+      <div class="ai-insight-body" id="ai-insight-body">
+        <div class="ai-thinking" id="ai-thinking" style="display:none">
+          <div class="ai-dot-pulse"><span></span><span></span><span></span></div>
+          <span>Analizando tu día...</span>
+        </div>
+        <p id="ai-insight-text">Registra tus comidas para recibir un consejo personalizado de tu coach de IA.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ─── PAGE: DIARY ─── -->
+  <main class="page" id="page-diary">
+
+    <div class="date-nav">
+      <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
+      <span class="date-nav-label" id="diary-date-label">Hoy</span>
+      <button class="date-nav-btn" onclick="changeDate(1)">›</button>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         AI SMART INPUT
+    ════════════════════════════════════════ -->
+    <div class="ai-input-card">
+      <div class="ai-input-header">
+        <div class="ai-input-title-wrap">
+          <span class="ai-spark-icon">✦</span>
+          <div>
+            <div class="ai-input-title">Entrada Inteligente</div>
+            <div class="ai-input-subtitle">Describe o fotografía lo que comiste</div>
+          </div>
+        </div>
+        <div class="ai-input-badge">IA</div>
+      </div>
+
+      <div class="ai-textarea-wrap">
+        <textarea
+          id="ai-food-input"
+          class="ai-textarea"
+          placeholder="Ej: Desayuné dos huevos fritos con una arepa y café con leche..."
+          rows="3"
+          maxlength="500"
+        ></textarea>
+
+        <input
+          type="file"
+          id="ai-image-input"
+          class="hidden"
+          accept="image/*"
+          capture="environment"
+          onchange="handleAIImageSelection(event)"
+        />
+
+        <div class="ai-textarea-tools">
+          <div class="ai-textarea-actions">
+            <button class="ai-mic-btn" id="ai-mic-btn" onclick="toggleVoiceInput()" title="Dictar" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+
+            <button
+              class="ai-camera-btn"
+              id="ai-camera-btn"
+              onclick="triggerAIImagePicker()"
+              title="Tomar foto o elegir imagen"
+              type="button"
+            >
+              <i data-lucide="camera"></i>
+            </button>
+          </div>
+
+          <span class="ai-char-count" id="ai-char-count">0/500</span>
+        </div>
+      </div>
+
+      <div class="ai-image-preview hidden" id="ai-image-preview">
+        <img id="ai-image-preview-img" alt="Vista previa de comida seleccionada"/>
+        <div class="ai-image-preview-meta-wrap">
+          <div class="ai-image-preview-title">Foto lista para analizar</div>
+          <div class="ai-image-preview-meta" id="ai-image-preview-meta">JPEG optimizado</div>
+        </div>
+        <button class="ai-image-remove" onclick="clearAIImageSelection()" title="Quitar foto" type="button">✕</button>
+      </div>
+
+      <div class="ai-meal-selector">
+        <span class="ai-meal-label">Añadir a:</span>
+        <div class="ai-meal-pills">
+          <button class="ai-meal-pill active" data-meal="breakfast" onclick="selectAIMeal(this)"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
+          <button class="ai-meal-pill" data-meal="lunch" onclick="selectAIMeal(this)"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
+          <button class="ai-meal-pill" data-meal="dinner" onclick="selectAIMeal(this)"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
+          <button class="ai-meal-pill" data-meal="snack" onclick="selectAIMeal(this)"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
+        </div>
+      </div>
+
+      <div class="ai-processing" id="ai-processing" style="display:none">
+        <div class="ai-processing-inner">
+          <div class="ai-spinner-orb"></div>
+          <div>
+            <div class="ai-processing-title">Pensando...</div>
+            <div class="ai-processing-sub" id="ai-processing-sub">Analizando nutrientes con IA</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-results" id="ai-results" style="display:none">
+        <div class="ai-results-header">
+          <span class="ai-results-title">✦ Detectado por IA</span>
+          <button class="ai-results-close" onclick="clearAIResults()">✕</button>
+        </div>
+        <div class="ai-results-list" id="ai-results-list"></div>
+        <div class="ai-results-total" id="ai-results-total"></div>
+        <button class="btn-ai-confirm" onclick="confirmAIFoods()">
+          ✎ Revisar antes de guardar
+        </button>
+      </div>
+
+      <div class="ai-actions">
+        <button class="btn-ai-analyze" id="btn-ai-analyze">
+          <span class="btn-ai-icon">✦</span>
+          Analizar con IA
+        </button>
+        <button class="btn-manual-search" onclick="openAddFood(null, getSelectedAIMeal())"><i data-lucide="search" class="lucide-pill"></i>
+          Buscar manual
+        </button>
+      </div>
+
+      <div class="ai-status-bar" id="ai-status-bar">
+        <span id="ai-status-icon">✦</span>
+        <span id="ai-status-text">Gemini lista · Fallback: Inteligencia Local + Open Food Facts ES</span>
+      </div>
+    </div>
+
+    <!-- Breakfast -->
+    <div class="meal-section" id="meal-breakfast">
+      <div class="meal-section-header" onclick="toggleMealSection(this)">
+        <div class="meal-section-left">
+          <div class="meal-section-icon breakfast"><i data-lucide="sunrise"></i></div>
+          <div>
+            <div class="meal-section-name">Desayuno</div>
+            <div class="meal-section-cal"><span class="meal-cal-display" data-meal="breakfast">0</span> kcal</div>
+          </div>
+        </div>
+        <button class="meal-add-btn" onclick="openAddFood(event,'breakfast')">+</button>
+      </div>
+      <div class="food-list" data-meal="breakfast" id="food-list-breakfast">
+        <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
+      </div>
+    </div>
+
+    <!-- Lunch -->
+    <div class="meal-section" id="meal-lunch">
+      <div class="meal-section-header" onclick="toggleMealSection(this)">
+        <div class="meal-section-left">
+          <div class="meal-section-icon lunch"><i data-lucide="sun"></i></div>
+          <div>
+            <div class="meal-section-name">Almuerzo</div>
+            <div class="meal-section-cal"><span class="meal-cal-display" data-meal="lunch">0</span> kcal</div>
+          </div>
+        </div>
+        <button class="meal-add-btn" onclick="openAddFood(event,'lunch')">+</button>
+      </div>
+      <div class="food-list" data-meal="lunch" id="food-list-lunch">
+        <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
+      </div>
+    </div>
+
+    <!-- Dinner -->
+    <div class="meal-section" id="meal-dinner">
+      <div class="meal-section-header" onclick="toggleMealSection(this)">
+        <div class="meal-section-left">
+          <div class="meal-section-icon dinner"><i data-lucide="moon"></i></div>
+          <div>
+            <div class="meal-section-name">Cena</div>
+            <div class="meal-section-cal"><span class="meal-cal-display" data-meal="dinner">0</span> kcal</div>
+          </div>
+        </div>
+        <button class="meal-add-btn" onclick="openAddFood(event,'dinner')">+</button>
+      </div>
+      <div class="food-list" data-meal="dinner" id="food-list-dinner">
+        <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
+      </div>
+    </div>
+
+    <!-- Snacks -->
+    <div class="meal-section" id="meal-snack">
+      <div class="meal-section-header" onclick="toggleMealSection(this)">
+        <div class="meal-section-left">
+          <div class="meal-section-icon snack"><i data-lucide="apple"></i></div>
+          <div>
+            <div class="meal-section-name">Snacks</div>
+            <div class="meal-section-cal"><span class="meal-cal-display" data-meal="snack">0</span> kcal</div>
+          </div>
+        </div>
+        <button class="meal-add-btn" onclick="openAddFood(event,'snack')">+</button>
+      </div>
+      <div class="food-list" data-meal="snack" id="food-list-snack">
+        <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ─── PAGE: PROGRESS ─── -->
+  <main class="page" id="page-progress">
+    <div class="stats-row" id="progress-stats">
+      <div class="stat-card">
+        <div class="stat-card-icon"><i data-lucide="scale"></i></div>
+        <div class="stat-card-value" id="stat-current-weight">--</div>
+        <div class="stat-card-label">Peso actual</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon"><i data-lucide="target"></i></div>
+        <div class="stat-card-value" id="stat-initial-weight">--</div>
+        <div class="stat-card-label">Inicio</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon"><i data-lucide="trending-down"></i></div>
+        <div class="stat-card-value" id="stat-change">--</div>
+        <div class="stat-card-label">Cambio</div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-title">Evolución del peso</div>
+      <div class="chart-card-sub">Últimas semanas</div>
+      <div class="chart-container"><canvas id="weight-chart"></canvas></div>
+    </div>
+
+    <div class="weight-log-card">
+      <div class="section-title"><i data-lucide="clipboard-pen" class="lucide-pill"></i> Registrar peso hoy</div>
+      <div class="weight-log-form">
+        <div class="form-group">
+          <label class="form-label">Peso (kg)</label>
+          <input type="number" class="form-input" id="log-weight-input" placeholder="70.0" step="0.1" min="30" max="300"/>
+        </div>
+        <button class="btn-log-weight" onclick="logWeight()">Guardar</button>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-title">Calorías — últimos 7 días</div>
+      <div class="chart-card-sub">Consumido vs. objetivo</div>
+      <div class="chart-container"><canvas id="calories-chart"></canvas></div>
+    </div>
+  </main>
+
+  <!-- ─── PAGE: PROFILE ─── -->
+  <main class="page" id="page-profile">
+    <div class="profile-hero">
+      <div class="profile-avatar" id="profile-avatar"><i data-lucide="user"></i></div>
+      <div class="profile-name" id="profile-name">Usuario</div>
+      <div class="profile-goal-badge" id="profile-goal-badge">Objetivo</div>
+    </div>
+
+    <div class="profile-stats-grid">
+      <div class="profile-stat-card">
+        <div class="psc-label">TMB</div>
+        <div class="psc-value"><span id="prof-bmr">0</span> <span class="psc-unit">kcal</span></div>
+      </div>
+      <div class="profile-stat-card">
+        <div class="psc-label">Meta diaria</div>
+        <div class="psc-value"><span id="prof-daily">0</span> <span class="psc-unit">kcal</span></div>
+      </div>
+      <div class="profile-stat-card">
+        <div class="psc-label">Peso</div>
+        <div class="psc-value"><span id="prof-weight">0</span> <span class="psc-unit">kg</span></div>
+      </div>
+      <div class="profile-stat-card">
+        <div class="psc-label">Altura</div>
+        <div class="psc-value"><span id="prof-height">0</span> <span class="psc-unit">cm</span></div>
+      </div>
+    </div>
+
+    <!-- AI Config Card -->
+    <div class="ai-config-card">
+      <div class="ai-config-header">
+        <span class="ai-orb"></span>
+        <div>
+          <div class="ai-config-title">Configuración de IA</div>
+          <div class="ai-config-sub">Activa el análisis inteligente de alimentos</div>
+        </div>
+      </div>
+      <div class="form-group mt-4">
+        <label class="form-label">API Key de Gemini</label>
+        <!-- ⚙️ PEGA TU API KEY AQUÍ o el usuario la escribe en el campo -->
+        <input type="password" class="form-input" id="ai-api-key-input" placeholder="AIza..."/>
+        <div class="ai-key-hint">Tu clave de Google Gemini se guarda localmente, nunca sale de tu dispositivo.</div>
+      </div>
+      <div class="form-group">
+        <div class="ai-provider-info" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--emerald-50,#ecfdf5);border-radius:10px;border:1px solid var(--emerald-200,#a7f3d0)">
+          <span style="font-size:1.2rem">✦</span>
+          <div>
+            <div style="font-size:.82rem;font-weight:700;color:var(--emerald-700,#047857)">Google Gemini 1.5 Flash</div>
+            <div style="font-size:.75rem;color:var(--gray-500)">Motor único de IA · Texto + Visión multimodal</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary" id="btn-save-ai-config" style="margin-top:8px">Guardar configuración</button>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-item" id="btn-edit-profile" onclick="toggleEditProfile()">
+        <div class="si-icon" style="background:#d1fae5"><i data-lucide="pencil"></i></div>
+        <div class="si-text">
+          <div class="si-label">Editar perfil</div>
+          <div class="si-desc">Actualiza tus datos personales</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+      <div class="settings-item" onclick="navigateTo('progress')">
+        <div class="si-icon" style="background:#ede9fe"><i data-lucide="bar-chart-3"></i></div>
+        <div class="si-text">
+          <div class="si-label">Ver progreso</div>
+          <div class="si-desc">Gráficas y estadísticas</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+      
+      <div class="settings-item" onclick="toggleFavoritesModal(true)">
+        <div class="si-icon" style="background:#fef3c7; color:#b45309"><i data-lucide="star"></i></div>
+        <div class="si-text">
+          <div class="si-label">Mis Favoritos</div>
+          <div class="si-desc">Tus comidas guardadas para rápido acceso</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+      
+      <div class="settings-item" onclick="toggleDarkMode()">
+        <div class="si-icon" style="background:#1f2937; color:#f9fafb"><i data-lucide="moon"></i></div>
+        <div class="si-text">
+          <div class="si-label">Modo Oscuro</div>
+          <div class="si-desc">Cambiar la apariencia visual</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+      
+      <div class="settings-item" onclick="exportData()">
+        <div class="si-icon" style="background:#fef3c7"><i data-lucide="download"></i></div>
+        <div class="si-text">
+          <div class="si-label">Exportar Datos</div>
+          <div class="si-desc">Guarda un respaldo de tu información</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+
+      <div class="settings-item" onclick="document.getElementById('import-input').click()">
+        <div class="si-icon" style="background:#e0f2fe"><i data-lucide="upload"></i></div>
+        <div class="si-text">
+          <div class="si-label">Importar Datos</div>
+          <div class="si-desc">Restaura tu información desde un archivo</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+      <input type="file" id="import-input" style="display: none;" accept=".json" onchange="importData(event)">
+      
+      <div class="settings-item" onclick="clearDataConfirm()">
+        <div class="si-icon" style="background:#fee2e2"><i data-lucide="trash-2"></i></div>
+        <div class="si-text">
+          <div class="si-label">Reiniciar datos</div>
+          <div class="si-desc">Borra todo y comienza de nuevo</div>
+        </div>
+        <span class="si-arrow">›</span>
+      </div>
+    </div>
+
+    <div class="edit-profile-form" id="edit-profile-form">
+      <div class="section-title mb-4">Editar perfil</div>
+      <div class="form-group">
+        <label class="form-label">Nombre</label>
+        <input type="text" class="form-input" id="edit-name"/>
+      </div>
+      <div class="input-row">
+        <div class="form-group">
+          <label class="form-label">Edad</label>
+          <input type="number" class="form-input" id="edit-age"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Altura (cm)</label>
+          <input type="number" class="form-input" id="edit-height"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Peso (kg)</label>
+        <input type="number" class="form-input" id="edit-weight" step="0.1"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nivel de actividad</label>
+        <select class="form-input" id="edit-activity">
+          <option value="sedentary">Sedentario</option>
+          <option value="light">Ligero</option>
+          <option value="moderate">Moderado</option>
+          <option value="active">Activo</option>
+          <option value="very_active">Muy activo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Objetivo</label>
+        <select class="form-input" id="edit-goal">
+          <option value="lose_weight">Perder peso</option>
+          <option value="maintain">Mantener peso</option>
+          <option value="gain_muscle">Ganar músculo</option>
+        </select>
+      </div>
+      <button class="btn-primary" onclick="saveProfile()">Guardar cambios</button>
+    </div>
+  </main>
+
+  <!-- ─── BOTTOM NAVIGATION ─── -->
+  <nav class="bottom-nav" role="navigation" aria-label="Navegación principal">
+    <button class="nav-item active" id="nav-home" data-page="home">
+      <span class="nav-icon"><i data-lucide="house"></i></span>
+      <span>Inicio</span>
+    </button>
+    <button class="nav-item" id="nav-diary" data-page="diary">
+      <span class="nav-icon"><i data-lucide="book-open"></i></span>
+      <span>Diario</span>
+    </button>
+    <button class="nav-item" id="nav-water" data-page="water">
+      <span class="nav-icon"><i data-lucide="droplets"></i></span>
+      <span>Agua</span>
+    </button>
+    <button class="nav-item" id="nav-progress" data-page="progress">
+      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span>
+      <span>Progreso</span>
+    </button>
+    <button class="nav-item" id="nav-profile" data-page="profile">
+      <span class="nav-icon"><i data-lucide="user"></i></span>
+      <span>Perfil</span>
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+
+<!-- ══════════════════════════════════════════════
+     FOOD SEARCH MODAL (Open Food Facts + manual)
+══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="food-modal" onclick="closeFoodModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="modal-meal-title">Añadir alimento</div>
+      <div class="search-input-wrap">
+        <span class="search-input-icon"><i data-lucide="search"></i></span>
+        <input type="text" class="search-input" id="food-search-input"
+          placeholder="Buscar en Open Food Facts…"
+          oninput="searchFood(this.value)"/>
+        <div class="search-source-badge" id="search-source-badge">OFF</div>
+      </div>
+    </div>
+
+    <div class="modal-body" id="food-search-results">
+      <div class="empty-state">
+        <div class="empty-icon"><i data-lucide="search"></i></div>
+        <p>Escribe para buscar alimentos<br><small>Powered by Open Food Facts</small></p>
+      </div>
+    </div>
+
+    <!-- Quantity Picker -->
+    <div id="qty-picker-section" class="hidden" style="padding:12px 20px; border-top:1px solid var(--gray-100)">
+      <div style="font-size:.85rem; font-weight:700; color:var(--gray-800); margin-bottom:8px">
+        <i data-lucide="utensils" class="lucide-pill"></i> <span id="selected-food-name">Alimento</span>
+      </div>
+      <div class="qty-picker-wrap">
+        <span class="qty-label">Cantidad:</span>
+        <div class="qty-controls-wrapper">
+          <input type="number" class="qty-input form-input" id="qty-input" value="100" min="1" max="2000"/>
+          <span class="qty-unit">gramos</span>
+          <button class="btn-confirm-add" onclick="confirmAddFood()">Añadir ✓</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Add -->
+    <div class="quick-add-section">
+      <div class="quick-add-title"><i data-lucide="zap" class="lucide-pill"></i> Entrada rápida</div>
+      <div class="quick-add-form">
+        <input type="number" class="quick-add-input" id="quick-cal-input" placeholder="Calorías" min="1"/>
+        <button class="btn-quick-add" onclick="quickAddCalories()">+ Añadir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     AI EDIT MODAL (revisión antes de guardar)
+══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="ai-edit-modal" onclick="closeAIFoodEditModal(event)">
+  <div class="modal-sheet ai-edit-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header ai-edit-header">
+      <div>
+        <div class="modal-title">Revisar alimentos detectados</div>
+        <div class="ai-edit-subtitle" id="ai-edit-subtitle">Edita los valores antes de guardar. Las calorías y macros se ajustarán si cambias los gramos.</div>
+      </div>
+    </div>
+
+    <div class="modal-body ai-edit-body">
+      <div class="ai-edit-nav" id="ai-edit-nav"></div>
+      <div class="ai-edit-position" id="ai-edit-position">Alimento 1 de 1</div>
+
+      <div class="ai-edit-grid">
+        <div class="form-group ai-edit-full">
+          <label class="form-label" for="ai-edit-name">Nombre del alimento</label>
+          <input type="text" class="form-input" id="ai-edit-name" placeholder="Ej. Pechuga de pollo"/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ai-edit-grams">Peso (g)</label>
+          <input type="number" class="form-input" id="ai-edit-grams" min="0" step="1"/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ai-edit-kcal">Calorías</label>
+          <input type="number" class="form-input" id="ai-edit-kcal" min="0" step="1"/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ai-edit-protein">Proteínas</label>
+          <input type="number" class="form-input" id="ai-edit-protein" min="0" step="0.1"/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="ai-edit-carbs">Carbs</label>
+          <input type="number" class="form-input" id="ai-edit-carbs" min="0" step="0.1"/>
+        </div>
+
+        <div class="form-group ai-edit-full">
+          <label class="form-label" for="ai-edit-fat">Grasas</label>
+          <input type="number" class="form-input" id="ai-edit-fat" min="0" step="0.1"/>
+        </div>
+      </div>
+
+      <div class="ai-edit-note">
+        ✦ Ajusta los gramos y los valores nutricionales se adaptarán automáticamente de manera proporcional.
+      </div>
+
+      <div class="ai-edit-summary" id="ai-edit-summary"></div>
+    </div>
+
+    <div class="ai-edit-footer">
+      <button class="btn-secondary" onclick="closeAIFoodEditModal()" type="button">Cancelar</button>
+      <button class="btn-confirm-add ai-edit-save-btn" onclick="saveEditedAIFoods()" type="button">Confirmar y Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notifications -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ══════════════════════════════════════════════
+     FAVORITES MODAL
+══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="favorites-modal" onclick="toggleFavoritesModal(false, event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">Mis Favoritos <i data-lucide="star" class="lucide-inline"></i></div>
+    </div>
+    <div class="modal-body" id="favorites-list">
+      <div class="empty-state">
+        <div class="empty-icon"><i data-lucide="star"></i></div>
+        <p>Aún no tienes alimentos favoritos.<br><small>Guárdalos desde el diario principal.</small></p>
+      </div>
+    </div>
+    <div id="meal-selector-ui" class="hidden" style="padding:16px 20px; border-top:1px solid var(--gray-100)">
+      <div style="font-size:.85rem; font-weight:700; color:var(--gray-800); margin-bottom:8px">
+        <i data-lucide="utensils" class="lucide-pill"></i> ¿A qué comida añadir?
+      </div>
+      <div class="meal-selector-grid">
+        <button class="btn-secondary" onclick="addToMealFromFav('breakfast')">Desayuno</button>
+        <button class="btn-secondary" onclick="addToMealFromFav('lunch')">Almuerzo</button>
+        <button class="btn-secondary" onclick="addToMealFromFav('dinner')">Cena</button>
+        <button class="btn-secondary" onclick="addToMealFromFav('snack')">Snack</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- App Script (single consolidated file) -->
+<script type="module" src="js/script.js?v=27.0"></script>
+
+<!-- P1: El registro del Service Worker se realiza en js/script.js.
+     El bloque duplicado que estaba aquí fue eliminado para evitar
+     conflictos y registros dobles. -->
+</body>
+</html>
