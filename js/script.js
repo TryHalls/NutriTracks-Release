@@ -86,6 +86,10 @@ if ('serviceWorker' in navigator) {
 /* ──────────────────────────────────────────────────────────────
    EXPOSICIÓN AL SCOPE GLOBAL (WINDOW)
    Mapea los eventos inline del HTML a sus respectivos módulos
+   NOTA DE ARQUITECTURA: Se mantiene un enfoque mixto (onclick inline en HTML
+   vs addEventListener) debido a la transición gradual del refactor original.
+   Exponer estas funciones en 'window' permite que los onclick sigan funcionando
+   sin tener que añadir IDs y listeners a los 64+ elementos interactivos de la UI.
    ────────────────────────────────────────────────────────────── */
 
 // State

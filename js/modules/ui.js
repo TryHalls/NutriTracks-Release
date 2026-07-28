@@ -385,7 +385,7 @@ export async function saveEditedAIFoods() {
 
   for (const a of foods) {
     saveFoodLogLocal({
-      id: 'ai_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      id: crypto.randomUUID(),
       user_id: App.user?.id || 'local',
       date: dateStr,
       meal_type: mealType,
@@ -682,8 +682,8 @@ export function renderFavorites() {
         </div>
       </div>
       <div class="fav-quick-actions">
-        <button class="btn-quick-add" title="Añadir al diario">+ Añadir</button>
-        <button class="btn-quick-rem" title="Quitar de favoritos"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
+        <button class="btn-quick-add" title="Añadir al diario" aria-label="Añadir al diario">+ Añadir</button>
+        <button class="btn-quick-rem" title="Quitar de favoritos" aria-label="Quitar de favoritos"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
       </div>`;
 
     item.querySelector('.btn-quick-add').addEventListener('click', (e) => {
@@ -820,7 +820,7 @@ export function renderFoodSearchResults(foods) {
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         ${sourceBadge}
-        <button class="sri-fav-btn" title="Favorito">${isFav ? '★' : '☆'}</button>
+        <button class="sri-fav-btn" title="Favorito" aria-label="Añadir a favoritos">${isFav ? '★' : '☆'}</button>
       </div>`;
 
     const favBtn = item.querySelector('.sri-fav-btn');
@@ -858,7 +858,7 @@ export async function confirmAddFood() {
   const source = food.source || 'local';
 
   const logData = {
-    id: `${source}_${Date.now()}`,
+    id: crypto.randomUUID(),
     user_id: App.user?.id || 'local',
     date: Utils.toDateStr(App.currentDiaryDate),
     meal_type: App.currentMealType,
@@ -885,7 +885,7 @@ export async function quickAddCalories() {
   if (!cal || cal <= 0 || cal > 9999) { showToast('Ingresa una cantidad válida', 'error'); return; }
 
   saveFoodLogLocal({
-    id: 'quick_' + Date.now(),
+    id: crypto.randomUUID(),
     user_id: App.user?.id || 'local',
     date: Utils.toDateStr(App.currentDiaryDate),
     meal_type: App.currentMealType,
@@ -1111,9 +1111,21 @@ export function createFoodItem(log) {
       <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
-      <button class="btn-fav-food" onclick="addLogToFavorites('${log.id}', this)">${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
-      <button class="btn-delete-food" style="margin-top:0;" onclick="deleteFoodLog('${log.id}')"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button>
+      <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
+      <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button>
     </div>`;
+
+  const btnFav = expanded.querySelector('.btn-fav-food');
+  btnFav.addEventListener('click', (e) => {
+    e.stopPropagation();
+    addLogToFavorites(log.id, btnFav);
+  });
+
+  const btnDel = expanded.querySelector('.btn-delete-food');
+  btnDel.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteFoodLog(log.id);
+  });
 
   item.onclick = () => expanded.classList.toggle('open');
   wrapper.appendChild(item);
@@ -1317,8 +1329,8 @@ export function refreshProfile() {
   const avatar = document.getElementById('profile-avatar');
   if (avatar) {
     avatar.innerHTML = u.gender === 'female'
-      ? '<i data-lucide="user-round"></i>'
-      : '<i data-lucide="user"></i>';
+      ? '<i data-lucide="user-round" role="img" aria-label="Avatar femenino"></i>'
+      : '<i data-lucide="user" role="img" aria-label="Avatar masculino"></i>';
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
   const nameEl = document.getElementById('profile-name');
@@ -1460,7 +1472,7 @@ export async function finishOnboarding() {
   const macros = Utils.calculateMacros(dailyCal, ob.goal);
 
   const userData = {
-    id: 'user_' + Date.now(),
+    id: crypto.randomUUID(),
     name: ob.name,
     gender: ob.gender,
     age: ob.age,
@@ -1610,7 +1622,7 @@ export function _registerScannedProduct(food, qty, sourceOverride) {
   var dateStr = new Date().toLocaleDateString('en-CA');
   var mealType = ScannerState.selectedMeal || 'breakfast';
   var logData = {
-    id: 'scan_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+    id: crypto.randomUUID(),
     user_id: (App.user && App.user.id) ? App.user.id : 'local',
     date: dateStr,
     meal_type: mealType,
@@ -1669,14 +1681,35 @@ export function importData(event) {
   reader.onload = function (e) {
     try {
       const backup = JSON.parse(e.target.result);
+
+      // Validar que el backup es un objeto plano y contiene datos esperados
+      if (!backup || typeof backup !== 'object' || Array.isArray(backup)) {
+        showToast("El archivo no tiene un formato de respaldo válido.", "error");
+        event.target.value = '';
+        return;
+      }
+
+      // Verificar que exista al menos la clave fundamental de usuario
+      const hasUserKey = Object.keys(backup).some(k => k === 'nt_user');
+      if (!hasUserKey) {
+        showToast("El respaldo no contiene datos de usuario (nt_user). ¿Es un archivo de NutriTrack?", "error");
+        event.target.value = '';
+        return;
+      }
+
       if (!confirm('¿Estás seguro de reemplazar todos tus datos actuales con este respaldo?')) {
         event.target.value = '';
         return;
       }
 
-      localStorage.clear();
+      // Solo limpiar claves con prefijo nt_ (no borrar datos de otros orígenes)
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('nt_'))
+        .forEach(k => localStorage.removeItem(k));
+
+      // Solo importar claves con prefijo nt_
       for (const key in backup) {
-        if (backup.hasOwnProperty(key)) {
+        if (backup.hasOwnProperty(key) && key.startsWith('nt_')) {
           localStorage.setItem(key, backup[key]);
         }
       }
@@ -1758,7 +1791,7 @@ export function toggleFavorite(food) {
     // No existe → agregar con datos completos
     const ratio = (food.defaultServingGrams || 100) / 100;
     favs.push({
-      id:       'fav_' + Date.now(),
+      id:       crypto.randomUUID(),
       food_name: nameToMatch,
       quantity:  food.quantity  ?? food.defaultServingGrams ?? 100,
       calories:  food.calories  !== undefined ? food.calories  : Math.round((food.calories_per_100g  || 0) * ratio),
@@ -1779,7 +1812,7 @@ export async function addToMealFromFav(targetMeal) {
   if (!pendingFavToAdd) return;
   const fav = pendingFavToAdd;
   saveFoodLogLocal({
-    id: `manual_${Date.now()}`,
+    id: crypto.randomUUID(),
     user_id: App.user?.id || 'local',
     date: Utils.toDateStr(App.currentDiaryDate),
     meal_type: targetMeal,

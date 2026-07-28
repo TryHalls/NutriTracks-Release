@@ -59,7 +59,7 @@ export function calculateTDEE(bmr, activity) {
 }
 export function calculateDailyCalories(tdee, goal) {
   const adj = { lose_weight: -500, maintain: 0, gain_muscle: +300 };
-  return Math.round(tdee + (adj[goal] || 0));
+  return Math.max(1200, Math.round(tdee + (adj[goal] || 0)));
 }
 export function calculateMacros(dailyCal, goal) {
   const r = {

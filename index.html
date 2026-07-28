@@ -22,13 +22,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
 
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@1.27.0/dist/umd/lucide.min.js" integrity="sha384-iGjGimQxA1QCAbLRiSWPFc+KsjPW3kLS/2Cub+yRgYfd4EUEx/dxoJ0MKyEsbjop" crossorigin="anonymous"></script>
 
   <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
   <!-- Html5-QRCode: Escáner de códigos de barras y QR -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
 
   <!-- App Styles -->
   <link rel="stylesheet" href="css/style.css?v=20.0"/>
@@ -190,7 +190,7 @@
       <span class="logo-icon"><i data-lucide="leaf"></i></span>
       <span class="topbar-title">NutriTrack Pro</span>
     </div>
-    <button class="topbar-action" id="topbar-action-btn" title="Acción">
+    <button class="topbar-action" id="topbar-action-btn" title="Acción" aria-label="Acción">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
   </header>
@@ -313,7 +313,7 @@
               <div class="scanner-subtitle" id="scanner-subtitle">Apunta al código de barras del producto</div>
             </div>
           </div>
-          <button class="scanner-close-btn" id="scanner-close-btn" type="button" title="Cerrar escáner">
+          <button class="scanner-close-btn" id="scanner-close-btn" type="button" title="Cerrar escáner" aria-label="Cerrar escáner">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -385,7 +385,7 @@
           <span class="ai-orb"></span>
           <span>Coach IA</span>
         </div>
-        <button class="ai-insight-refresh" id="btn-ai-insight-refresh" title="Actualizar consejo">
+        <button class="ai-insight-refresh" id="btn-ai-insight-refresh" title="Actualizar consejo" aria-label="Actualizar consejo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
       </div>
@@ -404,9 +404,9 @@
   <main class="page" id="page-diary">
 
     <div class="date-nav">
-      <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
+      <button class="date-nav-btn" onclick="changeDate(-1)" aria-label="Día anterior">‹</button>
       <span class="date-nav-label" id="diary-date-label">Hoy</span>
-      <button class="date-nav-btn" onclick="changeDate(1)">›</button>
+      <button class="date-nav-btn" onclick="changeDate(1)" aria-label="Día siguiente">›</button>
     </div>
 
     <!-- ════════════════════════════════════════
@@ -444,7 +444,7 @@
 
         <div class="ai-textarea-tools">
           <div class="ai-textarea-actions">
-            <button class="ai-mic-btn" id="ai-mic-btn" onclick="toggleVoiceInput()" title="Dictar" type="button">
+            <button class="ai-mic-btn" id="ai-mic-btn" onclick="toggleVoiceInput()" title="Dictar" type="button" aria-label="Dictar por voz">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -459,6 +459,7 @@
               onclick="triggerAIImagePicker()"
               title="Tomar foto o elegir imagen"
               type="button"
+              aria-label="Tomar foto o elegir imagen"
             >
               <i data-lucide="camera"></i>
             </button>
@@ -474,7 +475,7 @@
           <div class="ai-image-preview-title">Foto lista para analizar</div>
           <div class="ai-image-preview-meta" id="ai-image-preview-meta">JPEG optimizado</div>
         </div>
-        <button class="ai-image-remove" onclick="clearAIImageSelection()" title="Quitar foto" type="button">✕</button>
+        <button class="ai-image-remove" onclick="clearAIImageSelection()" title="Quitar foto" type="button" aria-label="Quitar foto">✕</button>
       </div>
 
       <div class="ai-meal-selector">
@@ -500,7 +501,7 @@
       <div class="ai-results" id="ai-results" style="display:none">
         <div class="ai-results-header">
           <span class="ai-results-title">✦ Detectado por IA</span>
-          <button class="ai-results-close" onclick="clearAIResults()">✕</button>
+          <button class="ai-results-close" onclick="clearAIResults()" aria-label="Cerrar resultados">✕</button>
         </div>
         <div class="ai-results-list" id="ai-results-list"></div>
         <div class="ai-results-total" id="ai-results-total"></div>
@@ -535,7 +536,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="breakfast">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'breakfast')">+</button>
+        <button class="meal-add-btn" onclick="openAddFood(event,'breakfast')" aria-label="Añadir desayuno">+</button>
       </div>
       <div class="food-list" data-meal="breakfast" id="food-list-breakfast">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -552,7 +553,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="lunch">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'lunch')">+</button>
+        <button class="meal-add-btn" onclick="openAddFood(event,'lunch')" aria-label="Añadir almuerzo">+</button>
       </div>
       <div class="food-list" data-meal="lunch" id="food-list-lunch">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -569,7 +570,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="dinner">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'dinner')">+</button>
+        <button class="meal-add-btn" onclick="openAddFood(event,'dinner')" aria-label="Añadir cena">+</button>
       </div>
       <div class="food-list" data-meal="dinner" id="food-list-dinner">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -586,7 +587,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="snack">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'snack')">+</button>
+        <button class="meal-add-btn" onclick="openAddFood(event,'snack')" aria-label="Añadir snack">+</button>
       </div>
       <div class="food-list" data-meal="snack" id="food-list-snack">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -642,7 +643,7 @@
   <!-- ─── PAGE: PROFILE ─── -->
   <main class="page" id="page-profile">
     <div class="profile-hero">
-      <div class="profile-avatar" id="profile-avatar"><i data-lucide="user"></i></div>
+      <div class="profile-avatar" id="profile-avatar"><i data-lucide="user" role="img" aria-label="Avatar de usuario"></i></div>
       <div class="profile-name" id="profile-name">Usuario</div>
       <div class="profile-goal-badge" id="profile-goal-badge">Objetivo</div>
     </div>

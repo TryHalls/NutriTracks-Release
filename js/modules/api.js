@@ -396,10 +396,13 @@ export async function fallbackToOpenFoodFacts(text) {
 
 /* ── Renderizar resultados de IA ── */
 export async function callGeminiPlainText(cfg, userPrompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${cfg.apiKey}`;
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-goog-api-key': cfg.apiKey
+    },
     body: JSON.stringify({
       contents: [{ parts: [{ text: userPrompt }] }],
       generationConfig: { maxOutputTokens: 400, temperature: 0.7 }
@@ -641,10 +644,13 @@ export async function _analyzeLabelWithGemini(imageFile) {
   try {
     var processed = await processImageForAI(imageFile);
     var systemPrompt = 'Extrae los datos nutricionales de esta etiqueta y responde SOLO un JSON valido EXACTAMENTE con este formato:\n{"name":"Nombre del producto","calories":123,"protein":4.5,"carbs":20.1,"fat":2.3}\nNo agregues markdown, comentarios, ni texto fuera del JSON. Si falta un valor usa 0.';
-    var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + cfg.apiKey;
+    var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
     var res = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': cfg.apiKey
+      },
       body: JSON.stringify({
         contents: [{
           parts: [
