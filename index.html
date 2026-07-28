@@ -65,16 +65,16 @@
       <div class="form-group">
         <label class="form-label">Género</label>
         <div class="gender-picker">
-          <button class="gender-btn" data-gender="male" onclick="selectGender(this)">
+          <button aria-pressed="false" aria-label="Género masculino" class="gender-btn" data-gender="male" onclick="selectGender(this)">
             <span class="icon"><i data-lucide="user"></i></span>Hombre
           </button>
-          <button class="gender-btn" data-gender="female" onclick="selectGender(this)">
+          <button aria-pressed="false" aria-label="Género femenino" aria-pressed="false" aria-label="Género masculino" class="gender-btn" data-gender="female" onclick="selectGender(this)">
             <span class="icon"><i data-lucide="user-round"></i></span>Mujer
           </button>
         </div>
       </div>
       <div class="step-nav">
-        <button class="btn-primary" onclick="nextStep()">Continuar →</button>
+        <button aria-label="Siguiente paso" class="btn-primary" onclick="nextStep()">Continuar →</button>
       </div>
     </div>
   </div>
@@ -99,8 +99,8 @@
         <input type="number" class="form-input" id="ob-weight" placeholder="70.0" step="0.1" min="30" max="300"/>
       </div>
       <div class="step-nav">
-        <button class="btn-secondary" onclick="prevStep()">← Atrás</button>
-        <button class="btn-primary" onclick="nextStep()">Continuar →</button>
+        <button aria-label="Paso anterior" class="btn-secondary" onclick="prevStep()">← Atrás</button>
+        <button aria-label="Siguiente paso" class="btn-primary" onclick="nextStep()">Continuar →</button>
       </div>
     </div>
   </div>
@@ -133,8 +133,8 @@
         </div>
       </div>
       <div class="step-nav mt-4">
-        <button class="btn-secondary" onclick="prevStep()">← Atrás</button>
-        <button class="btn-primary" onclick="nextStep()">Continuar →</button>
+        <button aria-label="Paso anterior" class="btn-secondary" onclick="prevStep()">← Atrás</button>
+        <button aria-label="Siguiente paso" class="btn-primary" onclick="nextStep()">Continuar →</button>
       </div>
     </div>
   </div>
@@ -170,8 +170,8 @@
         </div>
       </div>
       <div class="step-nav mt-4">
-        <button class="btn-secondary" onclick="prevStep()">← Atrás</button>
-        <button class="btn-primary" id="btn-finish" onclick="finishOnboarding()"><i data-lucide="rocket" class="lucide-pill"></i> ¡Empezar!</button>
+        <button aria-label="Paso anterior" class="btn-secondary" onclick="prevStep()">← Atrás</button>
+        <button aria-label="Finalizar registro" class="btn-primary" id="btn-finish" onclick="finishOnboarding()"><i data-lucide="rocket" class="lucide-pill"></i> ¡Empezar!</button>
       </div>
     </div>
   </div>
@@ -250,7 +250,7 @@
     <!-- Meal Summary -->
     <div class="section-header">
       <span class="section-title">Comidas de hoy</span>
-      <button class="section-link" onclick="navigateTo('diary')">Ver todo</button>
+      <button aria-label="Ver diario" class="section-link" onclick="navigateTo('diary')">Ver todo</button>
     </div>
     <div class="meal-summary-grid">
       <div class="meal-mini-card" onclick="navigateTo('diary')">
@@ -287,7 +287,7 @@
     <!-- ════════════════════════════════════════
          SMART SCANNER BUTTON
     ════════════════════════════════════════ -->
-    <button class="btn-scan-product" id="btn-scan-product" type="button">
+    <button aria-label="Abrir escáner inteligente" class="btn-scan-product" id="btn-scan-product" type="button">
       <span class="scan-btn-icon"><i data-lucide="scan-barcode"></i></span>
       <div class="scan-btn-text">
         <div class="scan-btn-title">Escáner Inteligente</div>
@@ -338,17 +338,59 @@
 
         <!-- Camera / Scanner Area -->
         <div class="scanner-camera-wrap">
-          <div id="interactive-scanner" class="scanner-viewport"></div>
+          <div id="interactive-scanner" class="scanner-viewport" aria-label="Cámara para escanear" role="region"></div>
           <div class="scanner-laser"></div>
         </div>
 
         <!-- Status bar inside modal -->
         <div class="scanner-status" id="scanner-status">
-          <div class="scanner-spinner" id="scanner-spinner" style="display:none">
+                    <div class="scanner-spinner" id="scanner-spinner" style="display:none">
             <div class="scan-orb"></div>
-            <span id="scanner-status-text">Inicializando cámara…</span>
+            <span id="scanner-status-text" aria-live="polite" aria-atomic="true">Inicializando cámara…</span>
+            <button id="btn-scanner-retry-cam" type="button" class="btn-secondary hidden" style="margin-top:10px;" aria-label="Reintentar cámara">Reintentar cámara</button>
           </div>
           <div id="scanner-barcode-result" class="scanner-barcode-result" style="display:none"></div>
+        </div>
+
+        
+        <!-- Scanner Confirmation -->
+        <div class="scanner-confirmation" id="scanner-confirmation" style="display:none">
+          <div class="scanner-conf-card">
+            <h3 id="scanner-conf-name" class="scanner-conf-name">Producto</h3>
+            <div class="scanner-conf-macros">
+              <div class="mac-item"><span>Kcal</span><strong id="scanner-conf-kcal">0</strong></div>
+              <div class="mac-item"><span>Prot</span><strong id="scanner-conf-prot">0</strong></div>
+              <div class="mac-item"><span>Carb</span><strong id="scanner-conf-carb">0</strong></div>
+              <div class="mac-item"><span>Grasa</span><strong id="scanner-conf-fat">0</strong></div>
+            </div>
+            <div class="scanner-conf-input form-group">
+              <label for="scanner-conf-grams" class="form-label">Cantidad (g):</label>
+              <input type="number" id="scanner-conf-grams" class="form-input" value="100" min="1" step="1" aria-describedby="scanner-conf-grams-desc" />
+              <span id="scanner-conf-grams-desc" class="sr-only">Ingrese la cantidad en gramos</span>
+            </div>
+            <button class="btn-confirm-add" id="btn-scanner-confirm" type="button" aria-label="Guardar alimento escaneado">Guardar alimento</button>
+          </div>
+        </div>
+
+        <!-- Scanner Manual Entry Fallback -->
+        <div class="scanner-not-found" id="scanner-not-found" style="display:none">
+          <div class="empty-icon"><i data-lucide="search-x"></i></div>
+          <p>Producto no encontrado en la base de datos.</p>
+          <div class="scanner-not-found-actions">
+            <button class="btn-primary" id="btn-fallback-photo" type="button" aria-label="Tomar foto de etiqueta">
+              <i data-lucide="camera" class="lucide-pill"></i> Tomar foto de etiqueta
+            </button>
+            <div class="scanner-manual-code-entry" style="display:flex;gap:8px;margin:8px 0;">
+               <input type="text" id="scanner-manual-code" class="form-input" placeholder="Código manual" aria-label="Ingresar código de barras manualmente" />
+               <button class="btn-secondary" id="btn-manual-code-search" type="button" aria-label="Buscar código" style="padding:0 12px;"><i data-lucide="search"></i></button>
+            </div>
+            <button class="btn-secondary" id="btn-fallback-manual" type="button" aria-label="Registrar manualmente">
+              <i data-lucide="pencil" class="lucide-pill"></i> Registrar manualmente
+            </button>
+            <button class="btn-secondary" id="btn-fallback-retry" type="button" aria-label="Buscar otro código">
+              <i data-lucide="refresh-cw" class="lucide-pill"></i> Buscar otro código
+            </button>
+          </div>
         </div>
 
         <!-- Actions -->
@@ -357,15 +399,15 @@
           <div class="scanner-meal-row">
             <span class="scanner-meal-label">Añadir a:</span>
             <div class="scanner-meal-pills">
-              <button class="scanner-meal-pill active" data-meal="breakfast" type="button"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
-              <button class="scanner-meal-pill" data-meal="lunch" type="button"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
-              <button class="scanner-meal-pill" data-meal="dinner" type="button"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
-              <button class="scanner-meal-pill" data-meal="snack" type="button"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
+              <button aria-pressed="false" aria-label="Seleccionar Desayuno" class="scanner-meal-pill active" data-meal="breakfast" type="button"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
+              <button aria-pressed="false" aria-label="Seleccionar Almuerzo" class="scanner-meal-pill" data-meal="lunch" type="button"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
+              <button aria-pressed="false" aria-label="Seleccionar Cena" class="scanner-meal-pill" data-meal="dinner" type="button"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
+              <button aria-pressed="false" aria-label="Seleccionar Snack" class="scanner-meal-pill" data-meal="snack" type="button"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
             </div>
           </div>
 
           <!-- Photo label fallback -->
-          <button class="btn-photo-label" id="btn-photo-label" type="button">
+          <button aria-label="Tomar foto a etiqueta" class="btn-photo-label" id="btn-photo-label" type="button">
             <i data-lucide="camera" class="lucide-pill"></i> Tomar foto a la Tabla Nutricional
           </button>
 
@@ -481,10 +523,10 @@
       <div class="ai-meal-selector">
         <span class="ai-meal-label">Añadir a:</span>
         <div class="ai-meal-pills">
-          <button class="ai-meal-pill active" data-meal="breakfast" onclick="selectAIMeal(this)"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
-          <button class="ai-meal-pill" data-meal="lunch" onclick="selectAIMeal(this)"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
-          <button class="ai-meal-pill" data-meal="dinner" onclick="selectAIMeal(this)"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
-          <button class="ai-meal-pill" data-meal="snack" onclick="selectAIMeal(this)"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
+          <button aria-pressed="false" aria-label="Seleccionar Desayuno" class="ai-meal-pill active" data-meal="breakfast" onclick="selectAIMeal(this)"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
+          <button aria-pressed="false" aria-label="Seleccionar Almuerzo" class="ai-meal-pill" data-meal="lunch" onclick="selectAIMeal(this)"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
+          <button aria-pressed="false" aria-label="Seleccionar Cena" class="ai-meal-pill" data-meal="dinner" onclick="selectAIMeal(this)"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
+          <button aria-pressed="false" aria-label="Seleccionar Snack" class="ai-meal-pill" data-meal="snack" onclick="selectAIMeal(this)"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
         </div>
       </div>
 
@@ -505,17 +547,17 @@
         </div>
         <div class="ai-results-list" id="ai-results-list"></div>
         <div class="ai-results-total" id="ai-results-total"></div>
-        <button class="btn-ai-confirm" onclick="confirmAIFoods()">
+        <button aria-label="Revisar alimentos IA" class="btn-ai-confirm" onclick="confirmAIFoods()">
           ✎ Revisar antes de guardar
         </button>
       </div>
 
       <div class="ai-actions">
-        <button class="btn-ai-analyze" id="btn-ai-analyze">
+        <button aria-label="Analizar con IA" class="btn-ai-analyze" id="btn-ai-analyze">
           <span class="btn-ai-icon">✦</span>
           Analizar con IA
         </button>
-        <button class="btn-manual-search" onclick="openAddFood(null, getSelectedAIMeal())"><i data-lucide="search" class="lucide-pill"></i>
+        <button aria-label="Buscar manual" class="btn-manual-search" onclick="openAddFood(null, getSelectedAIMeal())"><i data-lucide="search" class="lucide-pill"></i>
           Buscar manual
         </button>
       </div>
@@ -629,7 +671,7 @@
           <label class="form-label">Peso (kg)</label>
           <input type="number" class="form-input" id="log-weight-input" placeholder="70.0" step="0.1" min="30" max="300"/>
         </div>
-        <button class="btn-log-weight" onclick="logWeight()">Guardar</button>
+        <button aria-label="Guardar peso" class="btn-log-weight" onclick="logWeight()">Guardar</button>
       </div>
     </div>
 
@@ -691,7 +733,7 @@
           </div>
         </div>
       </div>
-      <button class="btn-primary" id="btn-save-ai-config" style="margin-top:8px">Guardar configuración</button>
+      <button aria-label="Guardar configuración de IA" class="btn-primary" id="btn-save-ai-config" style="margin-top:8px">Guardar configuración</button>
     </div>
 
     <div class="settings-card">
@@ -797,29 +839,29 @@
           <option value="gain_muscle">Ganar músculo</option>
         </select>
       </div>
-      <button class="btn-primary" onclick="saveProfile()">Guardar cambios</button>
+      <button aria-label="Guardar perfil" class="btn-primary" onclick="saveProfile()">Guardar cambios</button>
     </div>
   </main>
 
   <!-- ─── BOTTOM NAVIGATION ─── -->
   <nav class="bottom-nav" role="navigation" aria-label="Navegación principal">
-    <button class="nav-item active" id="nav-home" data-page="home">
+    <button aria-label="Inicio" class="nav-item active" id="nav-home" data-page="home">
       <span class="nav-icon"><i data-lucide="house"></i></span>
       <span>Inicio</span>
     </button>
-    <button class="nav-item" id="nav-diary" data-page="diary">
+    <button aria-label="Diario" class="nav-item" id="nav-diary" data-page="diary">
       <span class="nav-icon"><i data-lucide="book-open"></i></span>
       <span>Diario</span>
     </button>
-    <button class="nav-item" id="nav-water" data-page="water">
+    <button aria-label="Agua" class="nav-item" id="nav-water" data-page="water">
       <span class="nav-icon"><i data-lucide="droplets"></i></span>
       <span>Agua</span>
     </button>
-    <button class="nav-item" id="nav-progress" data-page="progress">
+    <button aria-label="Progreso" class="nav-item" id="nav-progress" data-page="progress">
       <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span>
       <span>Progreso</span>
     </button>
-    <button class="nav-item" id="nav-profile" data-page="profile">
+    <button aria-label="Perfil" class="nav-item" id="nav-profile" data-page="profile">
       <span class="nav-icon"><i data-lucide="user"></i></span>
       <span>Perfil</span>
     </button>
@@ -862,7 +904,7 @@
         <div class="qty-controls-wrapper">
           <input type="number" class="qty-input form-input" id="qty-input" value="100" min="1" max="2000"/>
           <span class="qty-unit">gramos</span>
-          <button class="btn-confirm-add" onclick="confirmAddFood()">Añadir ✓</button>
+          <button aria-label="Confirmar añadir alimento" class="btn-confirm-add" onclick="confirmAddFood()">Añadir ✓</button>
         </div>
       </div>
     </div>
@@ -872,7 +914,7 @@
       <div class="quick-add-title"><i data-lucide="zap" class="lucide-pill"></i> Entrada rápida</div>
       <div class="quick-add-form">
         <input type="number" class="quick-add-input" id="quick-cal-input" placeholder="Calorías" min="1"/>
-        <button class="btn-quick-add" onclick="quickAddCalories()">+ Añadir</button>
+        <button aria-label="Añadir rápido" class="btn-quick-add" onclick="quickAddCalories()">+ Añadir</button>
       </div>
     </div>
   </div>
@@ -935,14 +977,14 @@
     </div>
 
     <div class="ai-edit-footer">
-      <button class="btn-secondary" onclick="closeAIFoodEditModal()" type="button">Cancelar</button>
-      <button class="btn-confirm-add ai-edit-save-btn" onclick="saveEditedAIFoods()" type="button">Confirmar y Guardar</button>
+      <button aria-label="Cancelar edición IA" class="btn-secondary" onclick="closeAIFoodEditModal()" type="button">Cancelar</button>
+      <button aria-label="Confirmar añadir alimento" class="btn-confirm-add ai-edit-save-btn" onclick="saveEditedAIFoods()" type="button">Confirmar y Guardar</button>
     </div>
   </div>
 </div>
 
 <!-- Toast Notifications -->
-<div class="toast-container" id="toast-container"></div>
+<div class="toast-container" id="toast-container" role="alert" aria-live="assertive"></div>
 
 <!-- ══════════════════════════════════════════════
      FAVORITES MODAL
@@ -964,10 +1006,10 @@
         <i data-lucide="utensils" class="lucide-pill"></i> ¿A qué comida añadir?
       </div>
       <div class="meal-selector-grid">
-        <button class="btn-secondary" onclick="addToMealFromFav('breakfast')">Desayuno</button>
-        <button class="btn-secondary" onclick="addToMealFromFav('lunch')">Almuerzo</button>
-        <button class="btn-secondary" onclick="addToMealFromFav('dinner')">Cena</button>
-        <button class="btn-secondary" onclick="addToMealFromFav('snack')">Snack</button>
+        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('breakfast')">Desayuno</button>
+        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('lunch')">Almuerzo</button>
+        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('dinner')">Cena</button>
+        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('snack')">Snack</button>
       </div>
     </div>
   </div>

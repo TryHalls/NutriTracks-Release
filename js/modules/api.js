@@ -586,14 +586,14 @@ export async function searchOpenFoodFacts(query) {
 
 function _safeTriggerLabelPhotoFallback() {
   try {
-    if (typeof UI._triggerLabelPhotoFallback === 'function') {
-      UI._triggerLabelPhotoFallback();
+    if (typeof UI._showLabelPhotoFallbackUI === 'function') {
+      UI._showLabelPhotoFallbackUI();
       return;
     }
   } catch (err) {
-    console.warn('[Scanner] No se pudo activar fallback de foto:', err?.message || err);
+    console.warn('[Scanner] No se pudo activar UI de fallback:', err?.message || err);
   }
-  UI.showToast('No pude encontrar el producto. Usa foto de etiqueta o registro manual.', 'warning');
+  UI.showToast('Producto no encontrado. Registra manualmente.', 'warning');
 }
 
 /* ══════════════════════════════════════════════════════════════ */
