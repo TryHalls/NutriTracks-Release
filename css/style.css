@@ -4647,3 +4647,82 @@ body.dark-theme .btn-ai-confirm:hover {
     0 6px 24px rgba(99, 102, 241, .45),
     0 0 36px rgba(139, 92, 246, .15);
 }
+
+/* Scanner Confirmation */
+.scanner-confirmation {
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  margin-top: 10px;
+  text-align: center;
+}
+.scanner-conf-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin-bottom: 15px;
+}
+.scanner-conf-macros {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.scanner-conf-macros .mac-item {
+  display: flex;
+  flex-direction: column;
+  background: var(--gray-50);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.scanner-conf-macros .mac-item span {
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  text-transform: uppercase;
+}
+.scanner-conf-macros .mac-item strong {
+  font-size: 1.1rem;
+  color: var(--gray-900);
+}
+.scanner-conf-input {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.scanner-conf-input input {
+  width: 80px;
+  text-align: center;
+}
+
+/* Scanner Not Found */
+.scanner-not-found {
+  padding: 20px;
+  text-align: center;
+  background: #fef2f2;
+  border-radius: 12px;
+  margin-top: 10px;
+}
+.scanner-not-found .empty-icon {
+  background: #fee2e2;
+  color: #ef4444;
+}
+.scanner-not-found p {
+  color: #7f1d1d;
+  font-weight: 500;
+  margin-bottom: 15px;
+}
+.scanner-not-found-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.scanner-manual-code-entry {
+  display: flex;
+  gap: 8px;
+}
+.scanner-manual-code-entry input {
+  flex: 1;
+}

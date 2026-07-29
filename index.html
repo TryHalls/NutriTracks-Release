@@ -65,16 +65,16 @@
       <div class="form-group">
         <label class="form-label">Género</label>
         <div class="gender-picker">
-          <button aria-pressed="false" aria-label="Género masculino" class="gender-btn" data-gender="male" onclick="selectGender(this)">
+          <button id="evt_850a26" aria-pressed="false" aria-label="Género masculino" class="gender-btn" data-gender="male">
             <span class="icon"><i data-lucide="user"></i></span>Hombre
           </button>
-          <button aria-pressed="false" aria-label="Género femenino" aria-pressed="false" aria-label="Género masculino" class="gender-btn" data-gender="female" onclick="selectGender(this)">
+          <button id="evt_9e4ad4" aria-pressed="false" aria-label="Género femenino" aria-pressed="false" aria-label="Género masculino" class="gender-btn" data-gender="female">
             <span class="icon"><i data-lucide="user-round"></i></span>Mujer
           </button>
         </div>
       </div>
       <div class="step-nav">
-        <button aria-label="Siguiente paso" class="btn-primary" onclick="nextStep()">Continuar →</button>
+        <button id="evt_54d4f3" aria-label="Siguiente paso" class="btn-primary">Continuar →</button>
       </div>
     </div>
   </div>
@@ -99,8 +99,8 @@
         <input type="number" class="form-input" id="ob-weight" placeholder="70.0" step="0.1" min="30" max="300"/>
       </div>
       <div class="step-nav">
-        <button aria-label="Paso anterior" class="btn-secondary" onclick="prevStep()">← Atrás</button>
-        <button aria-label="Siguiente paso" class="btn-primary" onclick="nextStep()">Continuar →</button>
+        <button id="evt_899b05" aria-label="Paso anterior" class="btn-secondary">← Atrás</button>
+        <button id="evt_a012d2" aria-label="Siguiente paso" class="btn-primary">Continuar →</button>
       </div>
     </div>
   </div>
@@ -111,30 +111,30 @@
       <h2>Nivel de actividad <i data-lucide="dumbbell" class="lucide-inline"></i></h2>
       <p class="step-subtitle">¿Cuánto te mueves durante la semana?</p>
       <div class="activity-grid">
-        <div class="activity-card" data-activity="sedentary" onclick="selectActivity(this)">
+        <div id="evt_bc3d1e" class="activity-card" data-activity="sedentary">
           <span class="act-icon"><i data-lucide="sofa"></i></span>
           <div class="act-info"><h4>Sedentario</h4><p>Poco o ningún ejercicio</p></div>
         </div>
-        <div class="activity-card" data-activity="light" onclick="selectActivity(this)">
+        <div id="evt_347f39" class="activity-card" data-activity="light">
           <span class="act-icon"><i data-lucide="person-standing"></i></span>
           <div class="act-info"><h4>Ligero</h4><p>Ejercicio 1-3 días/semana</p></div>
         </div>
-        <div class="activity-card" data-activity="moderate" onclick="selectActivity(this)">
+        <div id="evt_f21990" class="activity-card" data-activity="moderate">
           <span class="act-icon"><i data-lucide="bike"></i></span>
           <div class="act-info"><h4>Moderado</h4><p>Ejercicio 3-5 días/semana</p></div>
         </div>
-        <div class="activity-card" data-activity="active" onclick="selectActivity(this)">
+        <div id="evt_da5e54" class="activity-card" data-activity="active">
           <span class="act-icon"><i data-lucide="dumbbell"></i></span>
           <div class="act-info"><h4>Activo</h4><p>Ejercicio 6-7 días/semana</p></div>
         </div>
-        <div class="activity-card" data-activity="very_active" onclick="selectActivity(this)">
+        <div id="evt_7018d3" class="activity-card" data-activity="very_active">
           <span class="act-icon"><i data-lucide="flame"></i></span>
           <div class="act-info"><h4>Muy activo</h4><p>Entrenamiento intenso 2x/día</p></div>
         </div>
       </div>
       <div class="step-nav mt-4">
-        <button aria-label="Paso anterior" class="btn-secondary" onclick="prevStep()">← Atrás</button>
-        <button aria-label="Siguiente paso" class="btn-primary" onclick="nextStep()">Continuar →</button>
+        <button id="evt_b37c36" aria-label="Paso anterior" class="btn-secondary">← Atrás</button>
+        <button id="evt_5c72ff" aria-label="Siguiente paso" class="btn-primary">Continuar →</button>
       </div>
     </div>
   </div>
@@ -145,15 +145,15 @@
       <h2>Tu objetivo <i data-lucide="target" class="lucide-inline"></i></h2>
       <p class="step-subtitle">Selecciona lo que quieres lograr.</p>
       <div class="goal-grid">
-        <div class="goal-card" data-goal="lose_weight" onclick="selectGoal(this)">
+        <div id="evt_9c2166" class="goal-card" data-goal="lose_weight">
           <div class="goal-icon" style="background:#fef3c7"><i data-lucide="trending-down"></i></div>
           <div class="goal-info"><h4>Perder peso</h4><p>Déficit calórico moderado</p></div>
         </div>
-        <div class="goal-card" data-goal="maintain" onclick="selectGoal(this)">
+        <div id="evt_3e9734" class="goal-card" data-goal="maintain">
           <div class="goal-icon" style="background:#d1fae5"><i data-lucide="scale"></i></div>
           <div class="goal-info"><h4>Mantener peso</h4><p>Equilibrio calórico</p></div>
         </div>
-        <div class="goal-card" data-goal="gain_muscle" onclick="selectGoal(this)">
+        <div id="evt_ecc55b" class="goal-card" data-goal="gain_muscle">
           <div class="goal-icon" style="background:#ede9fe"><i data-lucide="trending-up"></i></div>
           <div class="goal-info"><h4>Ganar músculo</h4><p>Superávit calórico controlado</p></div>
         </div>
@@ -170,8 +170,8 @@
         </div>
       </div>
       <div class="step-nav mt-4">
-        <button aria-label="Paso anterior" class="btn-secondary" onclick="prevStep()">← Atrás</button>
-        <button aria-label="Finalizar registro" class="btn-primary" id="btn-finish" onclick="finishOnboarding()"><i data-lucide="rocket" class="lucide-pill"></i> ¡Empezar!</button>
+        <button id="evt_cd1505" aria-label="Paso anterior" class="btn-secondary">← Atrás</button>
+        <button aria-label="Finalizar registro" class="btn-primary" id="btn-finish"><i data-lucide="rocket" class="lucide-pill"></i> ¡Empezar!</button>
       </div>
     </div>
   </div>
@@ -191,7 +191,7 @@
       <span class="topbar-title">NutriTrack Pro</span>
     </div>
     <button class="topbar-action" id="topbar-action-btn" title="Acción" aria-label="Acción">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <svg alt="Icono" role="img" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
   </header>
 
@@ -206,7 +206,7 @@
     <!-- Calories Ring Card -->
     <div class="calories-card">
       <div class="calories-ring-wrap">
-        <canvas id="calories-ring" width="110" height="110"></canvas>
+        <canvas alt="Gráfica" role="img" id="calories-ring" width="110" height="110"></canvas>
         <div class="calories-ring-center" style="color:white">
           <div class="ring-cal-number" id="ring-remaining">0</div>
           <div class="ring-cal-label">restantes</div>
@@ -250,25 +250,25 @@
     <!-- Meal Summary -->
     <div class="section-header">
       <span class="section-title">Comidas de hoy</span>
-      <button aria-label="Ver diario" class="section-link" onclick="navigateTo('diary')">Ver todo</button>
+      <button id="evt_f500fb" aria-label="Ver diario" class="section-link">Ver todo</button>
     </div>
     <div class="meal-summary-grid">
-      <div class="meal-mini-card" onclick="navigateTo('diary')">
+      <div id="evt_ee630b" class="meal-mini-card">
         <div class="meal-mini-icon"><i data-lucide="sunrise"></i></div>
         <div class="meal-mini-name">Desayuno</div>
         <div class="meal-mini-cal" id="mini-breakfast">0 kcal</div>
       </div>
-      <div class="meal-mini-card" onclick="navigateTo('diary')">
+      <div id="evt_331cf3" class="meal-mini-card">
         <div class="meal-mini-icon"><i data-lucide="sun"></i></div>
         <div class="meal-mini-name">Almuerzo</div>
         <div class="meal-mini-cal" id="mini-lunch">0 kcal</div>
       </div>
-      <div class="meal-mini-card" onclick="navigateTo('diary')">
+      <div id="evt_de4bfe" class="meal-mini-card">
         <div class="meal-mini-icon"><i data-lucide="moon"></i></div>
         <div class="meal-mini-name">Cena</div>
         <div class="meal-mini-cal" id="mini-dinner">0 kcal</div>
       </div>
-      <div class="meal-mini-card" onclick="navigateTo('diary')">
+      <div id="evt_6ed5a5" class="meal-mini-card">
         <div class="meal-mini-icon"><i data-lucide="apple"></i></div>
         <div class="meal-mini-name">Snacks</div>
         <div class="meal-mini-cal" id="mini-snack">0 kcal</div>
@@ -294,7 +294,7 @@
         <div class="scan-btn-sub">Escanea código de barras o etiqueta nutricional</div>
       </div>
       <span class="scan-btn-arrow">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <svg alt="Icono" role="img" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </span>
     </button>
 
@@ -314,7 +314,7 @@
             </div>
           </div>
           <button class="scanner-close-btn" id="scanner-close-btn" type="button" title="Cerrar escáner" aria-label="Cerrar escáner">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg alt="Icono" role="img" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
@@ -337,7 +337,7 @@
         </div>
 
         <!-- Camera / Scanner Area -->
-        <div class="scanner-camera-wrap">
+        <div class="scanner-camera-wrap" id="scanner-camera-wrap">
           <div id="interactive-scanner" class="scanner-viewport" aria-label="Cámara para escanear" role="region"></div>
           <div class="scanner-laser"></div>
         </div>
@@ -428,7 +428,7 @@
           <span>Coach IA</span>
         </div>
         <button class="ai-insight-refresh" id="btn-ai-insight-refresh" title="Actualizar consejo" aria-label="Actualizar consejo">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <svg alt="Icono" role="img" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
       </div>
       <div class="ai-insight-body" id="ai-insight-body">
@@ -446,9 +446,9 @@
   <main class="page" id="page-diary">
 
     <div class="date-nav">
-      <button class="date-nav-btn" onclick="changeDate(-1)" aria-label="Día anterior">‹</button>
+      <button id="evt_4c9905" class="date-nav-btn" aria-label="Día anterior">‹</button>
       <span class="date-nav-label" id="diary-date-label">Hoy</span>
-      <button class="date-nav-btn" onclick="changeDate(1)" aria-label="Día siguiente">›</button>
+      <button id="evt_90f31c" class="date-nav-btn" aria-label="Día siguiente">›</button>
     </div>
 
     <!-- ════════════════════════════════════════
@@ -486,8 +486,8 @@
 
         <div class="ai-textarea-tools">
           <div class="ai-textarea-actions">
-            <button class="ai-mic-btn" id="ai-mic-btn" onclick="toggleVoiceInput()" title="Dictar" type="button" aria-label="Dictar por voz">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <button class="ai-mic-btn" id="ai-mic-btn" title="Dictar" type="button" aria-label="Dictar por voz">
+              <svg alt="Icono" role="img" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                 <line x1="12" y1="19" x2="12" y2="23"/>
@@ -498,7 +498,7 @@
             <button
               class="ai-camera-btn"
               id="ai-camera-btn"
-              onclick="triggerAIImagePicker()"
+             
               title="Tomar foto o elegir imagen"
               type="button"
               aria-label="Tomar foto o elegir imagen"
@@ -517,16 +517,16 @@
           <div class="ai-image-preview-title">Foto lista para analizar</div>
           <div class="ai-image-preview-meta" id="ai-image-preview-meta">JPEG optimizado</div>
         </div>
-        <button class="ai-image-remove" onclick="clearAIImageSelection()" title="Quitar foto" type="button" aria-label="Quitar foto">✕</button>
+        <button id="evt_8e8dae" class="ai-image-remove" title="Quitar foto" type="button" aria-label="Quitar foto">✕</button>
       </div>
 
       <div class="ai-meal-selector">
         <span class="ai-meal-label">Añadir a:</span>
         <div class="ai-meal-pills">
-          <button aria-pressed="false" aria-label="Seleccionar Desayuno" class="ai-meal-pill active" data-meal="breakfast" onclick="selectAIMeal(this)"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
-          <button aria-pressed="false" aria-label="Seleccionar Almuerzo" class="ai-meal-pill" data-meal="lunch" onclick="selectAIMeal(this)"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
-          <button aria-pressed="false" aria-label="Seleccionar Cena" class="ai-meal-pill" data-meal="dinner" onclick="selectAIMeal(this)"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
-          <button aria-pressed="false" aria-label="Seleccionar Snack" class="ai-meal-pill" data-meal="snack" onclick="selectAIMeal(this)"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
+          <button id="evt_8e578c" aria-pressed="false" aria-label="Seleccionar Desayuno" class="ai-meal-pill active" data-meal="breakfast"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
+          <button id="evt_e6ee6f" aria-pressed="false" aria-label="Seleccionar Almuerzo" class="ai-meal-pill" data-meal="lunch"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
+          <button id="evt_bdd236" aria-pressed="false" aria-label="Seleccionar Cena" class="ai-meal-pill" data-meal="dinner"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
+          <button id="evt_972e0e" aria-pressed="false" aria-label="Seleccionar Snack" class="ai-meal-pill" data-meal="snack"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
         </div>
       </div>
 
@@ -543,11 +543,11 @@
       <div class="ai-results" id="ai-results" style="display:none">
         <div class="ai-results-header">
           <span class="ai-results-title">✦ Detectado por IA</span>
-          <button class="ai-results-close" onclick="clearAIResults()" aria-label="Cerrar resultados">✕</button>
+          <button id="evt_2baaac" class="ai-results-close" aria-label="Cerrar resultados">✕</button>
         </div>
         <div class="ai-results-list" id="ai-results-list"></div>
         <div class="ai-results-total" id="ai-results-total"></div>
-        <button aria-label="Revisar alimentos IA" class="btn-ai-confirm" onclick="confirmAIFoods()">
+        <button id="evt_053219" aria-label="Revisar alimentos IA" class="btn-ai-confirm">
           ✎ Revisar antes de guardar
         </button>
       </div>
@@ -557,7 +557,7 @@
           <span class="btn-ai-icon">✦</span>
           Analizar con IA
         </button>
-        <button aria-label="Buscar manual" class="btn-manual-search" onclick="openAddFood(null, getSelectedAIMeal())"><i data-lucide="search" class="lucide-pill"></i>
+        <button id="evt_6e9839" aria-label="Buscar manual" class="btn-manual-search"><i data-lucide="search" class="lucide-pill"></i>
           Buscar manual
         </button>
       </div>
@@ -570,7 +570,7 @@
 
     <!-- Breakfast -->
     <div class="meal-section" id="meal-breakfast">
-      <div class="meal-section-header" onclick="toggleMealSection(this)">
+      <div id="evt_26d38b" class="meal-section-header">
         <div class="meal-section-left">
           <div class="meal-section-icon breakfast"><i data-lucide="sunrise"></i></div>
           <div>
@@ -578,7 +578,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="breakfast">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'breakfast')" aria-label="Añadir desayuno">+</button>
+        <button id="evt_4bb3a8" class="meal-add-btn" aria-label="Añadir desayuno">+</button>
       </div>
       <div class="food-list" data-meal="breakfast" id="food-list-breakfast">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -587,7 +587,7 @@
 
     <!-- Lunch -->
     <div class="meal-section" id="meal-lunch">
-      <div class="meal-section-header" onclick="toggleMealSection(this)">
+      <div id="evt_72552e" class="meal-section-header">
         <div class="meal-section-left">
           <div class="meal-section-icon lunch"><i data-lucide="sun"></i></div>
           <div>
@@ -595,7 +595,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="lunch">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'lunch')" aria-label="Añadir almuerzo">+</button>
+        <button id="evt_825850" class="meal-add-btn" aria-label="Añadir almuerzo">+</button>
       </div>
       <div class="food-list" data-meal="lunch" id="food-list-lunch">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -604,7 +604,7 @@
 
     <!-- Dinner -->
     <div class="meal-section" id="meal-dinner">
-      <div class="meal-section-header" onclick="toggleMealSection(this)">
+      <div id="evt_97aa30" class="meal-section-header">
         <div class="meal-section-left">
           <div class="meal-section-icon dinner"><i data-lucide="moon"></i></div>
           <div>
@@ -612,7 +612,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="dinner">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'dinner')" aria-label="Añadir cena">+</button>
+        <button id="evt_90d401" class="meal-add-btn" aria-label="Añadir cena">+</button>
       </div>
       <div class="food-list" data-meal="dinner" id="food-list-dinner">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -621,7 +621,7 @@
 
     <!-- Snacks -->
     <div class="meal-section" id="meal-snack">
-      <div class="meal-section-header" onclick="toggleMealSection(this)">
+      <div id="evt_c0627f" class="meal-section-header">
         <div class="meal-section-left">
           <div class="meal-section-icon snack"><i data-lucide="apple"></i></div>
           <div>
@@ -629,7 +629,7 @@
             <div class="meal-section-cal"><span class="meal-cal-display" data-meal="snack">0</span> kcal</div>
           </div>
         </div>
-        <button class="meal-add-btn" onclick="openAddFood(event,'snack')" aria-label="Añadir snack">+</button>
+        <button id="evt_ae588d" class="meal-add-btn" aria-label="Añadir snack">+</button>
       </div>
       <div class="food-list" data-meal="snack" id="food-list-snack">
         <div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados</p></div>
@@ -661,7 +661,7 @@
     <div class="chart-card">
       <div class="chart-card-title">Evolución del peso</div>
       <div class="chart-card-sub">Últimas semanas</div>
-      <div class="chart-container"><canvas id="weight-chart"></canvas></div>
+      <div class="chart-container"><canvas alt="Gráfica" role="img" id="weight-chart"></canvas></div>
     </div>
 
     <div class="weight-log-card">
@@ -671,14 +671,14 @@
           <label class="form-label">Peso (kg)</label>
           <input type="number" class="form-input" id="log-weight-input" placeholder="70.0" step="0.1" min="30" max="300"/>
         </div>
-        <button aria-label="Guardar peso" class="btn-log-weight" onclick="logWeight()">Guardar</button>
+        <button id="evt_e0277e" aria-label="Guardar peso" class="btn-log-weight">Guardar</button>
       </div>
     </div>
 
     <div class="chart-card">
       <div class="chart-card-title">Calorías — últimos 7 días</div>
       <div class="chart-card-sub">Consumido vs. objetivo</div>
-      <div class="chart-container"><canvas id="calories-chart"></canvas></div>
+      <div class="chart-container"><canvas alt="Gráfica" role="img" id="calories-chart"></canvas></div>
     </div>
   </main>
 
@@ -737,7 +737,7 @@
     </div>
 
     <div class="settings-card">
-      <div class="settings-item" id="btn-edit-profile" onclick="toggleEditProfile()">
+      <div class="settings-item" id="btn-edit-profile">
         <div class="si-icon" style="background:#d1fae5"><i data-lucide="pencil"></i></div>
         <div class="si-text">
           <div class="si-label">Editar perfil</div>
@@ -745,7 +745,7 @@
         </div>
         <span class="si-arrow">›</span>
       </div>
-      <div class="settings-item" onclick="navigateTo('progress')">
+      <div id="evt_ae0ff8" class="settings-item">
         <div class="si-icon" style="background:#ede9fe"><i data-lucide="bar-chart-3"></i></div>
         <div class="si-text">
           <div class="si-label">Ver progreso</div>
@@ -754,7 +754,7 @@
         <span class="si-arrow">›</span>
       </div>
       
-      <div class="settings-item" onclick="toggleFavoritesModal(true)">
+      <div id="evt_e606f7" class="settings-item">
         <div class="si-icon" style="background:#fef3c7; color:#b45309"><i data-lucide="star"></i></div>
         <div class="si-text">
           <div class="si-label">Mis Favoritos</div>
@@ -763,7 +763,7 @@
         <span class="si-arrow">›</span>
       </div>
       
-      <div class="settings-item" onclick="toggleDarkMode()">
+      <div id="evt_0df47e" class="settings-item">
         <div class="si-icon" style="background:#1f2937; color:#f9fafb"><i data-lucide="moon"></i></div>
         <div class="si-text">
           <div class="si-label">Modo Oscuro</div>
@@ -772,7 +772,7 @@
         <span class="si-arrow">›</span>
       </div>
       
-      <div class="settings-item" onclick="exportData()">
+      <div id="evt_f4dce9" class="settings-item">
         <div class="si-icon" style="background:#fef3c7"><i data-lucide="download"></i></div>
         <div class="si-text">
           <div class="si-label">Exportar Datos</div>
@@ -781,7 +781,7 @@
         <span class="si-arrow">›</span>
       </div>
 
-      <div class="settings-item" onclick="document.getElementById('import-input').click()">
+      <div id="evt_02fad9" class="settings-item">
         <div class="si-icon" style="background:#e0f2fe"><i data-lucide="upload"></i></div>
         <div class="si-text">
           <div class="si-label">Importar Datos</div>
@@ -791,7 +791,7 @@
       </div>
       <input type="file" id="import-input" style="display: none;" accept=".json" onchange="importData(event)">
       
-      <div class="settings-item" onclick="clearDataConfirm()">
+      <div id="evt_a089ba" class="settings-item">
         <div class="si-icon" style="background:#fee2e2"><i data-lucide="trash-2"></i></div>
         <div class="si-text">
           <div class="si-label">Reiniciar datos</div>
@@ -839,7 +839,7 @@
           <option value="gain_muscle">Ganar músculo</option>
         </select>
       </div>
-      <button aria-label="Guardar perfil" class="btn-primary" onclick="saveProfile()">Guardar cambios</button>
+      <button id="evt_a6c01b" aria-label="Guardar perfil" class="btn-primary">Guardar cambios</button>
     </div>
   </main>
 
@@ -873,7 +873,7 @@
 <!-- ══════════════════════════════════════════════
      FOOD SEARCH MODAL (Open Food Facts + manual)
 ══════════════════════════════════════════════ -->
-<div class="modal-overlay" id="food-modal" onclick="closeFoodModal(event)">
+<div class="modal-overlay" id="food-modal">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header">
@@ -904,7 +904,7 @@
         <div class="qty-controls-wrapper">
           <input type="number" class="qty-input form-input" id="qty-input" value="100" min="1" max="2000"/>
           <span class="qty-unit">gramos</span>
-          <button aria-label="Confirmar añadir alimento" class="btn-confirm-add" onclick="confirmAddFood()">Añadir ✓</button>
+          <button id="evt_8a2f8d" aria-label="Confirmar añadir alimento" class="btn-confirm-add">Añadir ✓</button>
         </div>
       </div>
     </div>
@@ -914,7 +914,7 @@
       <div class="quick-add-title"><i data-lucide="zap" class="lucide-pill"></i> Entrada rápida</div>
       <div class="quick-add-form">
         <input type="number" class="quick-add-input" id="quick-cal-input" placeholder="Calorías" min="1"/>
-        <button aria-label="Añadir rápido" class="btn-quick-add" onclick="quickAddCalories()">+ Añadir</button>
+        <button id="evt_38b83e" aria-label="Añadir rápido" class="btn-quick-add">+ Añadir</button>
       </div>
     </div>
   </div>
@@ -923,8 +923,8 @@
 <!-- ══════════════════════════════════════════════
      AI EDIT MODAL (revisión antes de guardar)
 ══════════════════════════════════════════════ -->
-<div class="modal-overlay" id="ai-edit-modal" onclick="closeAIFoodEditModal(event)">
-  <div class="modal-sheet ai-edit-sheet" onclick="event.stopPropagation()">
+<div class="modal-overlay" id="ai-edit-modal">
+  <div id="evt_6c04ab" class="modal-sheet ai-edit-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header ai-edit-header">
       <div>
@@ -977,8 +977,8 @@
     </div>
 
     <div class="ai-edit-footer">
-      <button aria-label="Cancelar edición IA" class="btn-secondary" onclick="closeAIFoodEditModal()" type="button">Cancelar</button>
-      <button aria-label="Confirmar añadir alimento" class="btn-confirm-add ai-edit-save-btn" onclick="saveEditedAIFoods()" type="button">Confirmar y Guardar</button>
+      <button id="evt_2d34ac" aria-label="Cancelar edición IA" class="btn-secondary" type="button">Cancelar</button>
+      <button id="evt_a50096" aria-label="Confirmar añadir alimento" class="btn-confirm-add ai-edit-save-btn" type="button">Confirmar y Guardar</button>
     </div>
   </div>
 </div>
@@ -989,8 +989,8 @@
 <!-- ══════════════════════════════════════════════
      FAVORITES MODAL
 ══════════════════════════════════════════════ -->
-<div class="modal-overlay" id="favorites-modal" onclick="toggleFavoritesModal(false, event)">
-  <div class="modal-sheet" onclick="event.stopPropagation()">
+<div class="modal-overlay" id="favorites-modal">
+  <div id="evt_60b304" class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header">
       <div class="modal-title">Mis Favoritos <i data-lucide="star" class="lucide-inline"></i></div>
@@ -1006,10 +1006,10 @@
         <i data-lucide="utensils" class="lucide-pill"></i> ¿A qué comida añadir?
       </div>
       <div class="meal-selector-grid">
-        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('breakfast')">Desayuno</button>
-        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('lunch')">Almuerzo</button>
-        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('dinner')">Cena</button>
-        <button aria-label="Añadir de favoritos a comida" class="btn-secondary" onclick="addToMealFromFav('snack')">Snack</button>
+        <button id="evt_e054d2" aria-label="Añadir de favoritos a comida" class="btn-secondary">Desayuno</button>
+        <button id="evt_a9c306" aria-label="Añadir de favoritos a comida" class="btn-secondary">Almuerzo</button>
+        <button id="evt_13519b" aria-label="Añadir de favoritos a comida" class="btn-secondary">Cena</button>
+        <button id="evt_767b57" aria-label="Añadir de favoritos a comida" class="btn-secondary">Snack</button>
       </div>
     </div>
   </div>

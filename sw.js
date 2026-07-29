@@ -12,7 +12,7 @@ const CACHE_NAME = 'nutritrack-pro-cache-v3';
 const APP_SHELL_LOCAL = [
   './',
   './index.html',
-  './css/style.css?v=16.0',
+  './css/style.css?v=20.0',
   './js/script.js?v=26.0',
   './manifest.json',
   './icons/icon-192.png',
