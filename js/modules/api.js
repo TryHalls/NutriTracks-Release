@@ -405,7 +405,7 @@ export async function callGeminiPlainText(cfg, userPrompt) {
     },
     body: JSON.stringify({
       contents: [{ parts: [{ text: userPrompt }] }],
-      generationConfig: { maxOutputTokens: 400, temperature: 0.7 }
+      generationConfig: { maxOutputTokens: 2500, temperature: 0.7 }
     })
   });
   if (!res.ok) {

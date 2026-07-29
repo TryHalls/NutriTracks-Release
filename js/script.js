@@ -74,6 +74,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   UI.setupAIEditorListeners();
   UI.renderAIImagePreview();
   UI.initScannerEvents();
+
+  /* ── Resize event listener for charts ── */
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (App.waterChartInst) App.waterChartInst.resize();
+      if (App.weightChartInst) App.weightChartInst.resize();
+      if (App.caloriesChartInst) App.caloriesChartInst.resize();
+      if (App.caloriesRingChart) App.caloriesRingChart.resize();
+    }, 250);
+  });
 });
 
 /* ── Registro del SW ── */

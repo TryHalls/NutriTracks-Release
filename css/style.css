@@ -986,6 +986,8 @@ ul {
 .calories-ring-wrap {
   position: relative;
   flex-shrink: 0;
+  width: 110px;
+  height: 110px;
 }
 
 .calories-ring-wrap canvas {
@@ -1337,6 +1339,8 @@ ul {
   font-size: .88rem;
   color: var(--gray-700);
   line-height: 1.55;
+  max-height: 250px;
+  overflow-y: auto;
 }
 
 /* ── AI Orb (pulsating indicator) ── */
@@ -3003,6 +3007,7 @@ body.dark-theme .btn-quick-rem:hover {
 .chart-container {
   position: relative;
   height: 220px;
+  width: 100%;
 }
 
 .weight-log-card {
@@ -4695,6 +4700,22 @@ body.dark-theme .btn-ai-confirm:hover {
 .scanner-conf-input input {
   width: 80px;
   text-align: center;
+}
+
+body.dark-theme .scanner-confirmation {
+  background: var(--gray-800);
+}
+body.dark-theme .scanner-conf-name {
+  color: var(--gray-100);
+}
+body.dark-theme .scanner-conf-macros .mac-item {
+  background: var(--gray-700);
+}
+body.dark-theme .scanner-conf-macros .mac-item span {
+  color: var(--gray-400);
+}
+body.dark-theme .scanner-conf-macros .mac-item strong {
+  color: var(--gray-100);
 }
 
 /* Scanner Not Found */
