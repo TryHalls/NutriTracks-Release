@@ -21,6 +21,17 @@ jobs:
       with:
         node-version: '18'
     
+    - name: Create www directory
+      run: |
+        mkdir -p www
+        cp index.html www/
+        cp -r css www/ 2>/dev/null || true
+        cp -r js www/ 2>/dev/null || true
+        cp manifest.json www/ 2>/dev/null || true
+        cp sw.js www/ 2>/dev/null || true
+        echo "=== Files in www ==="
+        ls -la www/
+    
     - name: Install Capacitor
       run: npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5
     
@@ -30,7 +41,7 @@ jobs:
     - name: Initialize Capacitor
       run: npx cap init NutriTracks com.dylang.nutritracks --web-dir=www || true
     
-    - name: Add Android (fresh)
+    - name: Add Android
       run: npx cap add android
     
     - name: Sync
