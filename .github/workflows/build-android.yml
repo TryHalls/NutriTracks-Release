@@ -8,63 +8,57 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-    
-    - name: Set up Java 17
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: 'gradle'
     
-    - name: Debug - List files
-      run: |
-        echo "=== Root directory ==="
-        ls -la
-        echo "=== WWW directory ==="
-        ls -la www/ || echo "www folder not found"
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
     
-    - name: Install npm dependencies
-      run: |
-        npm init -y
-        npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5
-    
-    - name: Create www folder if not exists
-      run: |
-        mkdir -p www
-        if [ ! -f www/index.html ]; then
-          if [ -f index.html ]; then
-            cp index.html www/
-          fi
-        fi
+    - name: Install Capacitor
+      run: npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5
     
     - name: Initialize Capacitor
-      run: |
-        npx cap init NutriTracks com.dylang.nutritracks --web-dir=www --force || true
+      run: npx cap init NutriTracks com.dylang.nutritracks --web-dir=www --force
     
-    - name: Add Android platform
-      run: |
-        npx cap add android || true
+    - name: Add Android (fresh)
+      run: npx cap add android
     
-    - name: Sync Capacitor
+    - name: Sync
+      run: npx cap sync android
+    
+    - name: Setup Gradle manually
       run: |
-        npx cap sync android
+        cd android
+        # Descargar Gradle wrapper si no existe
+        if [ ! -f gradlew ]; then
+          echo "Downloading Gradle wrapper..."
+          wget https://services.gradle.org/distributions/gradle-8.2-bin.zip
+          unzip gradle-8.2-bin.zip
+          export GRADLE_HOME=$(pwd)/gradle-8.2
+          export PATH=$GRADLE_HOME/bin:$PATH
+          echo "Gradle installed at $GRADLE_HOME"
+        fi
     
     - name: Build APK
       run: |
         cd android
-        chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace
+        if [ -f gradlew ]; then
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+        else
+          # Usar Gradle directamente
+          gradle-8.2/bin/gradle assembleDebug --no-daemon
+        fi
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: NutriTracks-APK
         path: android/app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 5
