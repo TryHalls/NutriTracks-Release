@@ -24,6 +24,9 @@ jobs:
     - name: Install Capacitor
       run: npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5
     
+    - name: Remove existing android folder
+      run: rm -rf android
+    
     - name: Initialize Capacitor
       run: npx cap init NutriTracks com.dylang.nutritracks --web-dir=www || true
     
@@ -33,29 +36,11 @@ jobs:
     - name: Sync
       run: npx cap sync android
     
-    - name: Setup Gradle manually
-      run: |
-        cd android
-        # Descargar Gradle wrapper si no existe
-        if [ ! -f gradlew ]; then
-          echo "Downloading Gradle wrapper..."
-          wget https://services.gradle.org/distributions/gradle-8.2-bin.zip
-          unzip gradle-8.2-bin.zip
-          export GRADLE_HOME=$(pwd)/gradle-8.2
-          export PATH=$GRADLE_HOME/bin:$PATH
-          echo "Gradle installed at $GRADLE_HOME"
-        fi
-    
     - name: Build APK
       run: |
         cd android
-        if [ -f gradlew ]; then
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-        else
-          # Usar Gradle directamente
-          gradle-8.2/bin/gradle assembleDebug --no-daemon
-        fi
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
