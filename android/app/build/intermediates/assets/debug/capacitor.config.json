@@ -1,0 +1,8 @@
+{
+	"appId": "com.dylang.nutritracks",
+	"appName": "NutriTracks",
+	"webDir": "www",
+	"server": {
+		"androidScheme": "https"
+	}
+}

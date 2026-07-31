@@ -1,0 +1,48 @@
+{
+  "id": "index.html",
+  "name": "NutriTrack Pro",
+  "short_name": "NutriTrack",
+  "description": "Seguimiento nutricional inteligente, hidratación, progreso y diario alimentario en una sola app.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#059669",
+  "background_color": "#059669",
+  "categories": [
+    "health",
+    "fitness",
+    "food"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "NutriTrack Pro - vista amplia"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "NutriTrack Pro - vista movil"
+    }
+  ]
+}
