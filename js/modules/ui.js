@@ -3,6 +3,131 @@ import * as Utils from './utils.js';
 import * as API from './api.js';
 import { LOCAL_FOOD_DB } from './db.js';
 
+// ── OPTIMIZACIÓN: Caché en memoria para evitar lecturas sincrónicas frecuentes de localStorage
+App.cache = App.cache || {
+  foodLogs: {},
+  water: {},
+  weightLogs: null,
+  lastCacheUpdate: 0,
+  searchResults: {}, // Cache para búsquedas de alimentos
+  barcodeResults: {} // Cache para resultados de códigos de barras
+};
+
+const CACHE_TTL = {
+  foodLogs: 5000,
+  water: 5000,
+  searchResults: 300000, // 5 minutos
+  barcodeResults: 600000 // 10 minutos
+};
+
+export function getCached(key, ttl) {
+  const now = Date.now();
+  const cacheTTL = ttl !== undefined ? ttl : (CACHE_TTL[key] || 5000);
+  const cached = App.cache[key];
+  
+  if (cached && (now - cached.timestamp) < cacheTTL) {
+    return cached.data;
+  }
+  
+  const data = LS.get(key);
+  App.cache[key] = { data, timestamp: now };
+  return data;
+}
+
+// Cache específico para búsquedas
+export function getCachedSearch(query, results) {
+  if (results) {
+    // Guardar en caché
+    App.cache.searchResults[query] = { data: results, timestamp: Date.now() };
+    return results;
+  }
+  // Buscar en caché
+  const cached = App.cache.searchResults[query];
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL.searchResults) {
+    return cached.data;
+  }
+  return null;
+}
+
+// Cache específico para códigos de barras
+export function getCachedBarcode(barcode, result) {
+  if (result !== undefined) {
+    // Guardar en caché
+    App.cache.barcodeResults[barcode] = { data: result, timestamp: Date.now() };
+    return result;
+  }
+  // Buscar en caché
+  const cached = App.cache.barcodeResults[barcode];
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL.barcodeResults) {
+    return cached.data;
+  }
+  return null;
+}
+
+export function invalidateCache(keyPattern) {
+  Object.keys(App.cache).forEach(key => {
+    if (!keyPattern || key.includes(keyPattern)) {
+      delete App.cache[key];
+    }
+  });
+}
+
+// ── OPTIMIZACIÓN: Renderizado de íconos Lucide solo para elementos nuevos
+let iconRenderCounter = 0;
+let lastIconRenderTime = 0;
+export function renderIcons(rootElement = document) {
+  if (typeof lucide === 'undefined') return;
+  
+  // OPTIMIZACIÓN: Throttle para evitar múltiples renders en rápida sucesión
+  const now = Date.now();
+  if (now - lastIconRenderTime < 50) {
+    // Si es muy pronto, usar requestAnimationFrame
+    requestAnimationFrame(() => {
+      renderIcons(rootElement);
+    });
+    return;
+  }
+  lastIconRenderTime = now;
+  
+  const icons = rootElement.querySelectorAll('[data-lucide]:not(.lucide-rendered)');
+  if (icons.length === 0) return;
+  
+  lucide.createIcons({ root: rootElement });
+  icons.forEach(icon => icon.classList.add('lucide-rendered'));
+  iconRenderCounter += icons.length;
+}
+
+// ── OPTIMIZACIÓN: Debounce para operaciones pesadas
+export function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// ── OPTIMIZACIÓN: Throttle con requestAnimationFrame
+export function throttleRAF(callback) {
+  let rafId = null;
+  let lastArgs = null;
+  
+  return function(...args) {
+    lastArgs = args;
+    
+    if (!rafId) {
+      rafId = requestAnimationFrame(() => {
+        callback.apply(this, lastArgs);
+        rafId = null;
+        lastArgs = null;
+      });
+    }
+  };
+}
+
 export function showToast(message, type = 'success', icon = '') {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -24,6 +149,11 @@ export function showToast(message, type = 'success', icon = '') {
   }
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3400);
+  
+  // Renderizar ícono del toast si existe
+  if (toast.querySelector('[data-lucide]')) {
+    renderIcons(toast);
+  }
 }
 export function setGreeting() {
   if (!App.user) return;
@@ -62,9 +192,11 @@ export function navigateTo(page) {
   if (page === 'progress') refreshProgress();
   if (page === 'water') refreshWaterPage();
   if (page === 'profile') refreshProfile();
-
-  /* Re-render Lucide icons for dynamically changed elements */
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  
+  /* OPTIMIZACIÓN: Renderizar solo íconos nuevos en lugar de todo el documento */
+  requestAnimationFrame(() => {
+    renderIcons(document);
+  });
 }
 export function injectWaterPage() {
   if (document.getElementById('page-water')) return;
@@ -101,7 +233,7 @@ export function injectWaterPage() {
   `;
   const appEl = document.getElementById('app');
   appEl.insertBefore(wp, document.querySelector('.bottom-nav'));
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  renderIcons(this.parentElement || this);
 }
 export function openManualFoodRegistration(seedText = '') {
   openAddFood(null, App.selectedAIMeal || 'breakfast');
@@ -665,7 +797,7 @@ export function renderFavorites() {
         <small style="color:var(--gray-500)">Abre un alimento del diario y pulsa
           <strong>☆ Favorito</strong> para guardarlo aquí.</small>
       </div>`;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    renderIcons(this.parentElement || this);
     return;
   }
 
@@ -699,7 +831,7 @@ export function renderFavorites() {
 
     container.appendChild(item);
   });
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  renderIcons(this.parentElement || this);
 }
 export function toggleFavoritesModal(show, event) {
   if (event && event.target !== document.getElementById('favorites-modal') && !show) return;
@@ -839,7 +971,7 @@ export function renderFoodSearchResults(foods) {
     item.onclick = () => selectFoodFromSearch(food);
     container.appendChild(item);
   });
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  renderIcons(this.parentElement || this);
 }
 export function selectFoodFromSearch(food) {
   App.selectedFood = food;
@@ -921,7 +1053,9 @@ export async function deleteFoodLog(logId) {
 export async function refreshDashboard() {
   if (!App.user) return;
   const todayStr = Utils.toDateStr(new Date());
-  App.todayLogs = LS.get('food_logs_' + todayStr, []);
+  
+  // OPTIMIZACIÓN: Usar caché para logs del día
+  App.todayLogs = getCached('food_logs_' + todayStr, 3000);
   const totals = computeTotals(App.todayLogs);
 
   updateCaloriesRing(totals.calories, App.user.daily_calories);
@@ -1032,7 +1166,7 @@ export function renderDashboardWater() {
     btn.onclick = () => quickSetWater(i + 1);
     container.appendChild(btn);
   }
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  renderIcons(this.parentElement || this);
 }
 export async function quickSetWater(glasses) {
   App.todayWater = glasses;
@@ -1066,10 +1200,14 @@ export function renderDiaryMeals(logs) {
       list.innerHTML = `<div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados<br><small>Usa IA o búsqueda manual ↑</small></p></div>`;
       return;
     }
+    
+    // OPTIMIZACIÓN: DocumentFragment para reducir reflows
+    const fragment = document.createDocumentFragment();
     list.innerHTML = '';
-    mealLogs.forEach(log => list.appendChild(createFoodItem(log)));
+    mealLogs.forEach(log => fragment.appendChild(createFoodItem(log)));
+    list.appendChild(fragment);
   });
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  renderIcons(document.getElementById('page-diary'));
 }
 export function createFoodItem(log) {
   const isFav = getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
@@ -1182,7 +1320,7 @@ export function renderBigGlassGrid(current, goal) {
     btn.onclick = () => setWaterTo(i + 1);
     grid.appendChild(btn);
   }
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  renderIcons(this.parentElement || this);
 }
 export async function addWater() {
   const goal = App.user?.water_goal || 8;
@@ -1331,7 +1469,7 @@ export function refreshProfile() {
     avatar.innerHTML = u.gender === 'female'
       ? '<i data-lucide="user-round" role="img" aria-label="Avatar femenino"></i>'
       : '<i data-lucide="user" role="img" aria-label="Avatar masculino"></i>';
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    renderIcons(this.parentElement || this);
   }
   const nameEl = document.getElementById('profile-name');
   if (nameEl) nameEl.textContent = u.name || 'Usuario';
