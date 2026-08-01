@@ -1738,30 +1738,45 @@ export async function exportData() {
 
         // Verificar si estamos en la app nativa (Android) o en el navegador web
         const isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+        
+        console.log('[Export] Is native platform:', isNative);
+        console.log('[Export] Capacitor available:', !!window.Capacitor);
 
         if (isNative) {
-            // SOLUCIÓN PARA ANDROID: Usar Filesystem y Share
-            const { Filesystem, Directory } = await import('@capacitor/filesystem');
-            const { Share } = await import('@capacitor/share');
+            try {
+                // SOLUCIÓN PARA ANDROID: Usar Filesystem y Share
+                console.log('[Export] Importing Capacitor plugins...');
+                const { Filesystem, Directory } = await import('@capacitor/filesystem');
+                const { Share } = await import('@capacitor/share');
+                console.log('[Export] Plugins loaded successfully');
 
-            // 1. Guardar el archivo en la carpeta Documentos del celular
-            const result = await Filesystem.writeFile({
-                path: fileName,
-                data: dataStr,
-                directory: Directory.Documents,
-            });
+                // 1. Guardar el archivo en la carpeta Documentos del celular
+                console.log('[Export] Writing file to Documents...');
+                const result = await Filesystem.writeFile({
+                    path: fileName,
+                    data: dataStr,
+                    directory: Directory.Documents,
+                });
+                console.log('[Export] File written:', result);
 
-            // 2. Abrir el menú de compartir de Android para que el usuario lo guarde o envíe
-            await Share.share({
-                title: 'Respaldo NutriTracks',
-                text: 'Aquí está tu respaldo de datos.',
-                url: result.uri,
-                dialogTitle: 'Compartir respaldo'
-            });
-            
-            showToast("Respaldo creado y listo para compartir.", "success");
+                // 2. Abrir el menú de compartir de Android
+                console.log('[Export] Sharing file...');
+                await Share.share({
+                    title: 'Respaldo NutriTracks',
+                    text: 'Aquí está tu respaldo de datos.',
+                    url: result.uri,
+                    dialogTitle: 'Compartir respaldo'
+                });
+                
+                showToast("Respaldo creado y listo para compartir.", "success");
+            } catch (pluginError) {
+                console.error('[Export] Plugin error:', pluginError);
+                showToast("Error con los plugins de Capacitor: " + pluginError.message, "error");
+                throw pluginError;
+            }
         } else {
-            // FALLBACK PARA NAVEGADOR WEB (Chrome en PC)
+            // FALLBACK PARA NAVEGADOR WEB
+            console.log('[Export] Using web fallback...');
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1774,8 +1789,9 @@ export async function exportData() {
             showToast("Respaldo descargado exitosamente.", "success");
         }
     } catch (error) {
-        console.error("Error exportando datos:", error);
-        showToast("Hubo un error al exportar los datos.", "error");
+        console.error("[Export] Full error:", error);
+        console.error("[Export] Error stack:", error.stack);
+        showToast("Hubo un error al exportar los datos: " + error.message, "error");
     }
 }
 export function importData(event) {
