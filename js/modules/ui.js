@@ -1736,18 +1736,46 @@ export async function exportData() {
         const dataStr = JSON.stringify(backup, null, 2);
         const fileName = 'NutriTrack_Backup.json';
 
-        // Crear blob y descargar directamente (funciona en Android WebView)
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        showToast("Respaldo guardado en Descargas ✓", "success");
+        // Verificar si estamos en la app nativa (Android) o en el navegador web
+        const isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+
+        if (isNative) {
+            // SOLUCIÓN PARA ANDROID: Usar Filesystem y Share
+            const { Filesystem, Directory } = await import('@capacitor/filesystem');
+            const { Share } = await import('@capacitor/share');
+
+            // 1. Guardar el archivo en el almacenamiento privado de la app (Cache)
+            //    Directory.Documents falla en Android 10+ por scoped storage.
+            //    Directory.Cache no requiere permisos y sí está soportado por
+            //    el FileProvider (ver file_paths.xml -> <cache-path>).
+            const result = await Filesystem.writeFile({
+                path: fileName,
+                data: dataStr,
+                directory: Directory.Cache,
+            });
+
+            // 2. Abrir el menú de compartir de Android para que el usuario lo guarde o envíe
+            await Share.share({
+                title: 'Respaldo NutriTracks',
+                text: 'Aquí está tu respaldo de datos.',
+                url: result.uri,
+                dialogTitle: 'Compartir respaldo'
+            });
+            
+            showToast("Respaldo creado y listo para compartir.", "success");
+        } else {
+            // FALLBACK PARA NAVEGADOR WEB (Chrome en PC)
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("Respaldo descargado exitosamente.", "success");
+        }
     } catch (error) {
         console.error("Error exportando datos:", error);
         showToast("Hubo un error al exportar los datos.", "error");
@@ -2062,4 +2090,3 @@ export function toggleDarkMode() {
   document.body.classList.toggle('dark-theme', isDark);
   LS.set('dark_mode', isDark);
 }
-
