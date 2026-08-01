@@ -1748,7 +1748,7 @@ export async function exportData() {
             const result = await Filesystem.writeFile({
                 path: fileName,
                 data: dataStr,
-                directory: Directory.Documents,
+                directory: Directory.Cache,
             });
 
             // 2. Abrir el menú de compartir de Android para que el usuario lo guarde o envíe
@@ -1775,7 +1775,7 @@ export async function exportData() {
         }
     } catch (error) {
         console.error("Error exportando datos:", error);
-        showToast("Hubo un error al exportar los datos.", "error");
+        showToast("Error detallado: " + (error.message || JSON.stringify(error)), "error");
     }
 }
 export function importData(event) {
