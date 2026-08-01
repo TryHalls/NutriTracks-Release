@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NutriTracks</string>
+    <string name="title_activity_main">NutriTracks</string>
+    <string name="package_name">com.dylang.nutritracks</string>
+    <string name="custom_url_scheme">com.dylang.nutritracks</string>
+</resources>
