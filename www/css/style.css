@@ -425,10 +425,11 @@ ul {
    ============================================================ */
 #app {
   position: relative;
-  max-width: 430px;
-  margin: 0 auto;
   min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
+
 
 /* ── Top Bar ── */
 .topbar {
@@ -488,10 +489,15 @@ ul {
 
 /* ── Pages ── */
 .page {
-  padding: 20px 16px calc(var(--nav-height) + 20px);
-  min-height: 100vh;
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px 16px calc(var(--nav-height) + 20px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   opacity: 0;
   visibility: hidden;
   transform: translateY(8px) scale(0.99);
