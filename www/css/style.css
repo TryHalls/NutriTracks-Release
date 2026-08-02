@@ -3471,7 +3471,7 @@ body.dark-theme .btn-quick-rem:hover {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   display: flex;
-  align-items: flex-end;
+  align-items: flex-end; /* Alinea el sheet abajo */
   justify-content: center;
   opacity: 0;
   pointer-events: none;
@@ -3489,16 +3489,17 @@ body.dark-theme .btn-quick-rem:hover {
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
   border-radius: 28px 28px 0 0;
   padding: 0 0 env(safe-area-inset-bottom, 16px);
-  max-height: 96vh;
+  max-height: 90vh; /* Reducido ligeramente */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  transform: translateY(40px);
+  transform: translateY(100%); /* Empieza completamente abajo (fuera de pantalla) */
   transition: transform .35s cubic-bezier(.32, 0, .67, 0);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, .3);
 }
 
 .scanner-overlay.open .scanner-sheet {
-  transform: translateY(0);
+  transform: translateY(0); /* Sube a su posición normal */
   transition-timing-function: cubic-bezier(.33, 1, .68, 1);
 }
 
