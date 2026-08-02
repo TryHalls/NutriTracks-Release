@@ -826,7 +826,7 @@ export function renderFoodSearchResults(foods) {
 
     const isFav = favs.some(f => getFoodIdentity(f) === getFoodIdentity(food));
 
-    item.className = 'search-result-item';
+    item.className = 'search-result-item item-enter';
     item.innerHTML = `
       <div>
         <div class="sri-name">${escapeHtml(food.name)}</div>
@@ -1098,7 +1098,7 @@ export function createFoodItem(log, favIdentitySet) {
   const wrapper = document.createElement('div');
   wrapper.dataset.logId = log.id;
   const item = document.createElement('div');
-  item.className = 'food-item';
+  item.className = 'food-item item-enter';
   const badgeHtml = source === 'ai'
     ? `<span class="food-source-badge ai">IA</span>`
     : source === 'local'

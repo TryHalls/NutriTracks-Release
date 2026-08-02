@@ -188,69 +188,23 @@ body:not(.dark-theme) .si-icon {
 .food-item,
 .search-result-item,
 .settings-item {
-  animation: cascadeFadeIn .35s cubic-bezier(.16, 1, .3, 1) both;
+  /* Sin animación aquí */
+}
+/* La animación de cascada ahora se aplica solo a elementos nuevos mediante la clase .item-enter */
+.item-enter {
+  animation: cascadeFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Staggered delays for cascade effect (nth-child 1–10) */
-.food-item:nth-child(1),
-.search-result-item:nth-child(1),
-.settings-item:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.food-item:nth-child(2),
-.search-result-item:nth-child(2),
-.settings-item:nth-child(2) {
-  animation-delay: 0.05s;
-}
-
-.food-item:nth-child(3),
-.search-result-item:nth-child(3),
-.settings-item:nth-child(3) {
-  animation-delay: 0.10s;
-}
-
-.food-item:nth-child(4),
-.search-result-item:nth-child(4),
-.settings-item:nth-child(4) {
-  animation-delay: 0.15s;
-}
-
-.food-item:nth-child(5),
-.search-result-item:nth-child(5),
-.settings-item:nth-child(5) {
-  animation-delay: 0.20s;
-}
-
-.food-item:nth-child(6),
-.search-result-item:nth-child(6),
-.settings-item:nth-child(6) {
-  animation-delay: 0.25s;
-}
-
-.food-item:nth-child(7),
-.search-result-item:nth-child(7),
-.settings-item:nth-child(7) {
-  animation-delay: 0.30s;
-}
-
-.food-item:nth-child(8),
-.search-result-item:nth-child(8),
-.settings-item:nth-child(8) {
-  animation-delay: 0.35s;
-}
-
-.food-item:nth-child(9),
-.search-result-item:nth-child(9),
-.settings-item:nth-child(9) {
-  animation-delay: 0.40s;
-}
-
-.food-item:nth-child(10),
-.search-result-item:nth-child(10),
-.settings-item:nth-child(10) {
-  animation-delay: 0.45s;
-}
+.item-enter:nth-child(1) { animation-delay: 0s; }
+.item-enter:nth-child(2) { animation-delay: 0.04s; }
+.item-enter:nth-child(3) { animation-delay: 0.08s; }
+.item-enter:nth-child(4) { animation-delay: 0.12s; }
+.item-enter:nth-child(5) { animation-delay: 0.16s; }
+.item-enter:nth-child(6) { animation-delay: 0.20s; }
+.item-enter:nth-child(7) { animation-delay: 0.24s; }
+.item-enter:nth-child(8) { animation-delay: 0.28s; }
+.item-enter:nth-child(9) { animation-delay: 0.32s; }
+.item-enter:nth-child(10) { animation-delay: 0.36s; }
 
 /* ── Haptic Visual Feedback — "Press Down" Spring Effect ── */
 .btn-primary,
