@@ -425,8 +425,8 @@ ul {
    ============================================================ */
 #app {
   position: relative;
-  min-height: 100dvh;
-  height: 100dvh;
+  height: 100vh;
+  height: 100dvh; /* fallback moderno */
   overflow: hidden;
 }
 
@@ -4774,5 +4774,11 @@ body.dark-theme .scanner-conf-macros .mac-item strong {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+/* Fallback para WebViews antiguos que no soportan 100dvh */
+@supports not (height: 100dvh) {
+  #app {
+    height: calc(100vh - env(safe-area-inset-bottom, 0px));
   }
 }
