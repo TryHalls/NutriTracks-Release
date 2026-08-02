@@ -4,11 +4,12 @@ android {
     namespace "com.dylang.nutritracks"
     compileSdkVersion rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.dylang.nutritracks"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+    applicationId "com.dylang.nutritracks"
+    minSdkVersion 22
+    targetSdkVersion 33
+    versionCode System.currentTimeMillis().intdiv(1000).int()  // Auto-incrementa
+    versionName "1.0"
+}
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
