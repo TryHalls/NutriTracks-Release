@@ -487,37 +487,40 @@ ul {
 }
 
 /* ── Pages ── */
+/* ── Pages ── */
 .page {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 20px 16px calc(var(--nav-height) + 20px);
+  padding: calc(var(--topbar-height) + 20px) 16px calc(var(--nav-height) + 20px);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(8px) scale(0.99);
-  transition: opacity .28s cubic-bezier(.4,0,.2,1),
-              transform .28s cubic-bezier(.4,0,.2,1),
-              visibility 0s linear .28s;
+  transform: translateY(10px);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s linear 0.25s;
   will-change: opacity, transform;
+  z-index: 1;
 }
 
 .page.active {
-  position: relative;
+  position: fixed;
   opacity: 1;
   visibility: visible;
-  transform: translateY(0) scale(1);
-  transition: opacity .28s cubic-bezier(.4,0,.2,1),
-              transform .28s cubic-bezier(.4,0,.2,1);
-  transition-delay: .04s;
+  transform: translateY(0);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition-delay: 0s;
+  z-index: 2;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .page { transition: none; transform: none; }
+  .page { 
+    transition: none; 
+    transform: none; 
+  }
 }
 /* ── Bottom Navigation ── */
 .bottom-nav {
