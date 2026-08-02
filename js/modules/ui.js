@@ -1736,49 +1736,30 @@ export async function exportData() {
         const dataStr = JSON.stringify(backup, null, 2);
         const fileName = 'NutriTrack_Backup.json';
 
-        // Verificar si estamos en la app nativa (Android) o en el navegador web
-        const isNative = window.Capacitor && window.Capacitor.isNativePlatform();
-
-        if (isNative) {
-            // SOLUCIÓN PARA ANDROID: Usar Filesystem y Share
-            const { Filesystem, Directory } = await import('@capacitor/filesystem');
-            const { Share } = await import('@capacitor/share');
-
-            // 1. Guardar el archivo en el almacenamiento privado de la app (Cache)
-            //    Directory.Documents falla en Android 10+ por scoped storage.
-            //    Directory.Cache no requiere permisos y sí está soportado por
-            //    el FileProvider (ver file_paths.xml -> <cache-path>).
-            const result = await Filesystem.writeFile({
-                path: fileName,
-                data: dataStr,
-                directory: Directory.Cache,
-            });
-
-            // 2. Abrir el menú de compartir de Android para que el usuario lo guarde o envíe
-            await Share.share({
-                title: 'Respaldo NutriTracks',
-                text: 'Aquí está tu respaldo de datos.',
-                url: result.uri,
-                dialogTitle: 'Compartir respaldo'
-            });
-            
-            showToast("Respaldo creado y listo para compartir.", "success");
-        } else {
-            // FALLBACK PARA NAVEGADOR WEB (Chrome en PC)
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
+        // Método universal: crear Blob y forzar descarga
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        // Crear enlace temporal
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        
+        // Forzar clic
+        a.click();
+        
+        // Limpiar
+        setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showToast("Respaldo descargado exitosamente.", "success");
-        }
+        }, 100);
+        
+        showToast("Respaldo guardado en Descargas ✓", "success");
     } catch (error) {
         console.error("Error exportando datos:", error);
-        showToast("Hubo un error al exportar los datos.", "error");
+        showToast("Error al exportar: " + error.message, "error");
     }
 }
 export function importData(event) {

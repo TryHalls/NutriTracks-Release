@@ -4747,3 +4747,11 @@ body.dark-theme .scanner-conf-macros .mac-item strong {
 .scanner-manual-code-entry input {
   flex: 1;
 }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

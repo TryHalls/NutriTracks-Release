@@ -665,7 +665,6 @@ export function renderFavorites() {
         <small style="color:var(--gray-500)">Abre un alimento del diario y pulsa
           <strong>☆ Favorito</strong> para guardarlo aquí.</small>
       </div>`;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
     return;
   }
 
@@ -1032,7 +1031,6 @@ export function renderDashboardWater() {
     btn.onclick = () => quickSetWater(i + 1);
     container.appendChild(btn);
   }
-  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 export async function quickSetWater(glasses) {
   App.todayWater = glasses;
@@ -1054,79 +1052,56 @@ export function changeDate(delta) {
   refreshDiary();
 }
 export function renderDiaryMeals(logs) {
+  // A1: Leer favoritos UNA sola vez
+  const favIdentitySet = new Set(getFavorites().map(getFoodIdentity));
+  
   ['breakfast', 'lunch', 'dinner', 'snack'].forEach(meal => {
     const mealLogs = logs.filter(l => l.meal_type === meal);
     const list = document.getElementById(`food-list-${meal}`);
     if (!list) return;
-
     const calEl = list.parentElement?.querySelector('.meal-cal-display');
     if (calEl) calEl.textContent = Math.round(mealLogs.reduce((s, l) => s + (l.calories || 0), 0));
-
     if (!mealLogs.length) {
       list.innerHTML = `<div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados<br><small>Usa IA o búsqueda manual ↑</small></p></div>`;
       return;
     }
+    // A2: DocumentFragment para un solo reflow
+    const fragment = document.createDocumentFragment();
+    mealLogs.forEach(log => fragment.appendChild(createFoodItem(log, favIdentitySet)));
     list.innerHTML = '';
-    mealLogs.forEach(log => list.appendChild(createFoodItem(log)));
+    list.appendChild(fragment);
   });
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
-export function createFoodItem(log) {
-  const isFav = getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
+export function createFoodItem(log, favIdentitySet) {
+  const isFav = favIdentitySet ? favIdentitySet.has(getFoodIdentity(log)) : getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
   const source = log.source || 'manual';
   const wrapper = document.createElement('div');
   wrapper.dataset.logId = log.id;
-
   const item = document.createElement('div');
   item.className = 'food-item';
-
   const badgeHtml = source === 'ai'
     ? `<span class="food-source-badge ai">IA</span>`
     : source === 'local'
-      ? `<span class="food-source-badge off" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">LOCAL</span>`
-      : source === 'off'
-        ? `<span class="food-source-badge off">OFF</span>`
-        : `<span class="food-source-badge manual">Manual</span>`;
-
+    ? `<span class="food-source-badge off" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">LOCAL</span>`
+    : source === 'off'
+    ? `<span class="food-source-badge off">OFF</span>`
+    : `<span class="food-source-badge manual">Manual</span>`;
   const dotClass = source === 'ai' ? 'food-item-dot ai-source' : 'food-item-dot';
-
-  item.innerHTML = `
-    <div class="food-item-left">
-      <div class="${dotClass}"></div>
-      <div class="food-item-info">
-        <div class="food-item-name">${escapeHtml(log.food_name)}</div>
-        <div class="food-item-qty">${log.quantity ? log.quantity + 'g' : '—'}</div>
-      </div>
-      ${badgeHtml}
-    </div>
-    <div class="food-item-cal">${Math.round(log.calories)} kcal</div>`;
-
+  item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${log.quantity ? log.quantity + 'g' : '—'}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${Math.round(log.calories)} kcal</div>`;
   const expanded = document.createElement('div');
   expanded.className = 'food-item-expanded';
-  expanded.innerHTML = `
-    <div class="food-micro-grid">
-      <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div>
-      <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div>
-      <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div>
-      <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:12px;">
-      <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
-      <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button>
-    </div>`;
-
+  expanded.innerHTML = `<div class="food-micro-grid"> <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div> <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div> </div> <div style="display:flex;gap:8px;margin-top:12px;"> <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button> <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button> </div>`;
   const btnFav = expanded.querySelector('.btn-fav-food');
   btnFav.addEventListener('click', (e) => {
     e.stopPropagation();
     addLogToFavorites(log.id, btnFav);
   });
-
   const btnDel = expanded.querySelector('.btn-delete-food');
   btnDel.addEventListener('click', (e) => {
     e.stopPropagation();
     deleteFoodLog(log.id);
   });
-
   item.onclick = () => expanded.classList.toggle('open');
   wrapper.appendChild(item);
   wrapper.appendChild(expanded);
@@ -1182,7 +1157,6 @@ export function renderBigGlassGrid(current, goal) {
     btn.onclick = () => setWaterTo(i + 1);
     grid.appendChild(btn);
   }
-  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 export async function addWater() {
   const goal = App.user?.water_goal || 8;
