@@ -3,6 +3,19 @@ import * as Utils from './utils.js';
 import * as API from './api.js';
 import { LOCAL_FOOD_DB } from './db.js';
 
+let _html5QrcodeLoaded = null;
+function loadHtml5Qrcode() {
+  if (_html5QrcodeLoaded) return _html5QrcodeLoaded;
+  _html5QrcodeLoaded = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return _html5QrcodeLoaded;
+}
+
 export function showToast(message, type = 'success', icon = '') {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -1009,28 +1022,35 @@ export function loadTodayWater() {
   const todayStr = Utils.toDateStr(new Date());
   App.todayWater = LS.get('water_' + todayStr, 0);
 }
-export function renderDashboardWater() {
+export function renderDashboardWater(forceRebuild = false) {
   const goal = App.user?.water_goal || 8;
   const current = App.todayWater || 0;
   const countEl = document.getElementById('dash-water');
   const goalEl = document.getElementById('dash-water-goal');
   if (countEl) countEl.textContent = current;
   if (goalEl) goalEl.textContent = goal;
-
   const container = document.getElementById('dash-water-glasses');
   if (!container) return;
-  container.innerHTML = '';
-  for (let i = 0; i < goal; i++) {
-    const btn = document.createElement('button');
-    btn.className = 'glass-btn' + (i < current ? ' filled' : '');
-    btn.textContent = '';  // Will be replaced by Lucide icon
-    const icon = document.createElement('i');
-    icon.setAttribute('data-lucide', 'droplets');
-    btn.appendChild(icon);
-    btn.title = `Vaso ${i + 1}`;
-    btn.onclick = () => quickSetWater(i + 1);
-    container.appendChild(btn);
+  const needsRebuild = forceRebuild || container.children.length !== goal;
+  if (needsRebuild) {
+    container.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < goal; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'glass-btn';
+      const icon = document.createElement('i');
+      icon.setAttribute('data-lucide', 'droplets');
+      btn.appendChild(icon);
+      btn.title = `Vaso ${i + 1}`;
+      btn.onclick = () => quickSetWater(i + 1);
+      fragment.appendChild(btn);
+    }
+    container.appendChild(fragment);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
+  [...container.children].forEach((btn, i) => {
+    btn.classList.toggle('filled', i < current);
+  });
 }
 export async function quickSetWater(glasses) {
   App.todayWater = glasses;
@@ -1052,9 +1072,7 @@ export function changeDate(delta) {
   refreshDiary();
 }
 export function renderDiaryMeals(logs) {
-  // A1: Leer favoritos UNA sola vez
   const favIdentitySet = new Set(getFavorites().map(getFoodIdentity));
-  
   ['breakfast', 'lunch', 'dinner', 'snack'].forEach(meal => {
     const mealLogs = logs.filter(l => l.meal_type === meal);
     const list = document.getElementById(`food-list-${meal}`);
@@ -1065,7 +1083,6 @@ export function renderDiaryMeals(logs) {
       list.innerHTML = `<div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados<br><small>Usa IA o búsqueda manual ↑</small></p></div>`;
       return;
     }
-    // A2: DocumentFragment para un solo reflow
     const fragment = document.createDocumentFragment();
     mealLogs.forEach(log => fragment.appendChild(createFoodItem(log, favIdentitySet)));
     list.innerHTML = '';
@@ -1093,15 +1110,9 @@ export function createFoodItem(log, favIdentitySet) {
   expanded.className = 'food-item-expanded';
   expanded.innerHTML = `<div class="food-micro-grid"> <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div> <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div> </div> <div style="display:flex;gap:8px;margin-top:12px;"> <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button> <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button> </div>`;
   const btnFav = expanded.querySelector('.btn-fav-food');
-  btnFav.addEventListener('click', (e) => {
-    e.stopPropagation();
-    addLogToFavorites(log.id, btnFav);
-  });
+  btnFav.addEventListener('click', (e) => { e.stopPropagation(); addLogToFavorites(log.id, btnFav); });
   const btnDel = expanded.querySelector('.btn-delete-food');
-  btnDel.addEventListener('click', (e) => {
-    e.stopPropagation();
-    deleteFoodLog(log.id);
-  });
+  btnDel.addEventListener('click', (e) => { e.stopPropagation(); deleteFoodLog(log.id); });
   item.onclick = () => expanded.classList.toggle('open');
   wrapper.appendChild(item);
   wrapper.appendChild(expanded);
@@ -1145,18 +1156,26 @@ export function updateWaterProgressArc(current, goal) {
 export function renderBigGlassGrid(current, goal) {
   const grid = document.getElementById('water-big-grid');
   if (!grid) return;
-  grid.innerHTML = '';
-  for (let i = 0; i < goal; i++) {
-    const btn = document.createElement('button');
-    btn.className = 'big-glass-btn' + (i < current ? ' filled' : '');
-    btn.textContent = '';  // Will be replaced by Lucide icon
-    const icon = document.createElement('i');
-    icon.setAttribute('data-lucide', 'droplets');
-    btn.appendChild(icon);
-    btn.title = `Vaso ${i + 1}`;
-    btn.onclick = () => setWaterTo(i + 1);
-    grid.appendChild(btn);
+  const needsRebuild = grid.children.length !== goal;
+  if (needsRebuild) {
+    grid.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < goal; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'big-glass-btn';
+      const icon = document.createElement('i');
+      icon.setAttribute('data-lucide', 'droplets');
+      btn.appendChild(icon);
+      btn.title = `Vaso ${i + 1}`;
+      btn.onclick = () => setWaterTo(i + 1);
+      fragment.appendChild(btn);
+    }
+    grid.appendChild(fragment);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }
+  [...grid.children].forEach((btn, i) => {
+    btn.classList.toggle('filled', i < current);
+  });
 }
 export async function addWater() {
   const goal = App.user?.water_goal || 8;
@@ -1197,7 +1216,7 @@ export function renderWaterChart() {
     App.waterChartInst.data.labels = labels;
     App.waterChartInst.data.datasets[0].data = values;
     App.waterChartInst.data.datasets[0].backgroundColor = values.map(v => v >= goal ? '#3b82f6' : 'rgba(59,130,246,.4)');
-    App.waterChartInst.update();
+    App.waterChartInst.update('none');
     return;
   }
   App.waterChartInst = new Chart(canvas.getContext('2d'), {
@@ -1236,7 +1255,7 @@ export function loadAndRenderWeightChart() {
         : 'var(--gray-600)';
   }
 
-  if (App.weightChartInst) { App.weightChartInst.data.labels = labels; App.weightChartInst.data.datasets[0].data = data; App.weightChartInst.update(); return; }
+  if (App.weightChartInst) { App.weightChartInst.data.labels = labels; App.weightChartInst.data.datasets[0].data = data; App.weightChartInst.update('none'); return; }
   App.weightChartInst = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: { labels, datasets: [{ label: 'Peso (kg)', data, borderColor: 'var(--emerald-500)', backgroundColor: 'rgba(16,185,129,.1)', borderWidth: 2.5, pointBackgroundColor: 'var(--emerald-500)', pointBorderColor: 'white', pointBorderWidth: 2, pointRadius: 5, fill: true, tension: .4 }] },
@@ -1261,7 +1280,7 @@ export function loadAndRenderCaloriesChart() {
     App.caloriesChartInst.data.datasets[0].data = consumed;
     App.caloriesChartInst.data.datasets[0].backgroundColor = consumed.map(v => v > dailyGoal ? 'rgba(239,68,68,.7)' : 'rgba(16,185,129,.7)');
     App.caloriesChartInst.data.datasets[1].data = goalLine;
-    App.caloriesChartInst.update();
+    App.caloriesChartInst.update('none');
     return;
   }
   App.caloriesChartInst = new Chart(canvas.getContext('2d'), {
@@ -1515,7 +1534,8 @@ export function _scannerHideBarcodeResult() {
   const el = document.getElementById('scanner-barcode-result');
   if (el) el.style.display = 'none';
 }
-export function openScannerModal() {
+export async function openScannerModal() {
+  await loadHtml5Qrcode();
   const modal = document.getElementById('scanner-container');
   if (!modal) return;
   ScannerState.processed = false;
@@ -1523,27 +1543,21 @@ export function openScannerModal() {
   _scannerHideBarcodeResult();
   _scannerSetPhase(1);
   _scannerSetStatus('Apunta al código de barras del producto', false);
-  
-  // Hide fallback and confirmation screens
   const notFound = document.getElementById('scanner-not-found');
   if (notFound) notFound.style.display = 'none';
   const confScreen = document.getElementById('scanner-confirmation');
   if (confScreen) confScreen.style.display = 'none';
   const camWrap = document.getElementById('scanner-camera-wrap');
   if (camWrap) camWrap.style.display = 'block';
-
-  // Select meal based on hour
   const greeting = Utils.greetingByHour();
   if (greeting.includes('días')) ScannerState.selectedMeal = 'breakfast';
   else if (greeting.includes('tardes')) ScannerState.selectedMeal = 'lunch';
   else ScannerState.selectedMeal = 'dinner';
-
   document.querySelectorAll('#scanner-container .scanner-meal-pill').forEach(function (btn) {
     const isActive = btn.dataset.meal === ScannerState.selectedMeal;
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
-  
   modal.style.display = 'flex';
   setTimeout(() => modal.classList.add('open'), 10);
   _startBarcodeScanner();
