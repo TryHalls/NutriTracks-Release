@@ -49,23 +49,31 @@ jobs:
       run: |
         npx cap sync android
     
-    # ---- NUEVO PASO: decodificar el keystore ----
+    # ---- Decodificar el keystore en la carpeta correcta ----
     - name: Decode Keystore
       run: |
+        mkdir -p android/app
         echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
     
-    # ---- NUEVO PASO: compilar en RELEASE con las variables de entorno ----
+    # ---- Verificar que el keystore se creó correctamente ----
+    - name: Verify Keystore
+      run: |
+        ls -la android/app/release.keystore
+        file android/app/release.keystore
+        keytool -list -keystore android/app/release.keystore -storepass ${{ secrets.KEYSTORE_PASSWORD }} -alias ${{ secrets.KEY_ALIAS }} || echo "Verificación fallida, revisa contraseñas o alias"
+    
+    # ---- Compilar en RELEASE con las variables de entorno ----
     - name: Build Release APK
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: |
         cd android
         chmod +x gradlew
-        export KEYSTORE_PATH=app/release.keystore
-        export KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}
-        export KEY_ALIAS=${{ secrets.KEY_ALIAS }}
-        export KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
         ./gradlew assembleRelease --stacktrace
     
-    # ---- Subimos la APK de release ----
+    # ---- Subir la APK de release ----
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
