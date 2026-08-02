@@ -1740,18 +1740,18 @@ export async function exportData() {
         const isNative = window.Capacitor && window.Capacitor.isNativePlatform();
 
         if (isNative) {
-            // SOLUCIÓN PARA ANDROID: Usar Filesystem y Share
-            const { Filesystem, Directory } = await import('@capacitor/filesystem');
-            const { Share } = await import('@capacitor/share');
+            // ✅ SOLUCIÓN: Usar los plugins expuestos globalmente por Capacitor (sin bundler)
+            const { Filesystem, Share } = window.Capacitor.Plugins;
 
-            // 1. Guardar el archivo en la carpeta Documentos del celular
+            // 1. Guardar el archivo en la carpeta Cache (evita problemas de permisos en Android 10+)
             const result = await Filesystem.writeFile({
                 path: fileName,
                 data: dataStr,
-                directory: Directory.Cache,
+                directory: 'CACHE',      // Equivalente a Directory.Cache (sin import)
+                encoding: 'utf8'         // ✅ CRUCIAL: indica que data es texto plano, no base64
             });
 
-            // 2. Abrir el menú de compartir de Android para que el usuario lo guarde o envíe
+            // 2. Abrir el menú de compartir de Android
             await Share.share({
                 title: 'Respaldo NutriTracks',
                 text: 'Aquí está tu respaldo de datos.',
@@ -1775,7 +1775,7 @@ export async function exportData() {
         }
     } catch (error) {
         console.error("Error exportando datos:", error);
-        showToast("Error detallado: " + (error.message || JSON.stringify(error)), "error");
+        showToast("Hubo un error al exportar: " + error.message, "error");
     }
 }
 export function importData(event) {
@@ -2087,4 +2087,3 @@ export function toggleDarkMode() {
   document.body.classList.toggle('dark-theme', isDark);
   LS.set('dark_mode', isDark);
 }
-
