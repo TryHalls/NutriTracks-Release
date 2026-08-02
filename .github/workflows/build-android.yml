@@ -23,13 +23,6 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
     
-    - name: Debug - List files
-      run: |
-        echo "=== Root directory ==="
-        ls -la
-        echo "=== WWW directory ==="
-        ls -la www/ || echo "www folder not found"
-    
     - name: Install npm dependencies
       run: |
         npm init -y
@@ -56,15 +49,26 @@ jobs:
       run: |
         npx cap sync android
     
-    - name: Build APK
+    # ---- NUEVO PASO: decodificar el keystore ----
+    - name: Decode Keystore
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+    
+    # ---- NUEVO PASO: compilar en RELEASE con las variables de entorno ----
+    - name: Build Release APK
       run: |
         cd android
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace
+        export KEYSTORE_PATH=app/release.keystore
+        export KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}
+        export KEY_ALIAS=${{ secrets.KEY_ALIAS }}
+        export KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
+        ./gradlew assembleRelease --stacktrace
     
+    # ---- Subimos la APK de release ----
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: NutriTracks-APK
-        path: android/app/build/outputs/apk/debug/app-debug.apk
+        name: NutriTracks-Release-APK
+        path: android/app/build/outputs/apk/release/app-release.apk
         retention-days: 5
