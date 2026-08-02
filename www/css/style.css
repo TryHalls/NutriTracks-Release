@@ -3467,15 +3467,15 @@ body.dark-theme .btn-quick-rem:hover {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, .65);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.75); /* Más oscuro para resaltar la hoja */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
-  align-items: flex-end; /* Alinea el sheet abajo */
+  align-items: flex-end; /* La hoja se alinea abajo */
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity .3s ease;
+  transition: opacity 0.3s ease;
 }
 
 .scanner-overlay.open {
@@ -3483,25 +3483,29 @@ body.dark-theme .btn-quick-rem:hover {
   pointer-events: all;
 }
 
+
 .scanner-sheet {
   width: 100%;
   max-width: 430px;
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
   border-radius: 28px 28px 0 0;
   padding: 0 0 env(safe-area-inset-bottom, 16px);
-  max-height: 90vh; /* Reducido ligeramente */
-  overflow-y: auto;
+  /* Eliminamos max-height para que se ajuste al contenido */
   display: flex;
   flex-direction: column;
-  transform: translateY(100%); /* Empieza completamente abajo (fuera de pantalla) */
-  transition: transform .35s cubic-bezier(.32, 0, .67, 0);
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, .3);
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.32, 0, 0.67, 0);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+  /* Nuevo: limitamos altura para que no ocupe toda la pantalla */
+  max-height: 92vh;
+  overflow-y: auto; /* Permitir scroll si el contenido es muy largo */
 }
 
 .scanner-overlay.open .scanner-sheet {
-  transform: translateY(0); /* Sube a su posición normal */
-  transition-timing-function: cubic-bezier(.33, 1, .68, 1);
+  transform: translateY(0);
+  transition-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
 }
+
 
 .scanner-header {
   display: flex;
@@ -3619,23 +3623,25 @@ body.dark-theme .btn-quick-rem:hover {
 .scanner-camera-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 1/1;
-  max-height: 300px;
+  /* Cambiamos de aspect-ratio fijo a una altura dinámica */
+  height: 50vh; /* Ocupa la mitad de la altura de la pantalla */
+  max-height: 400px; /* Límite máximo para pantallas grandes */
+  min-height: 240px; /* Mínimo para que se vea bien en pantallas pequeñas */
   overflow: hidden;
   background: #000;
+  border-radius: 12px; /* Opcional: bordes redondeados */
+  margin: 0 8px; /* Pequeño margen lateral para que no toque los bordes */
 }
 
 .scanner-viewport {
   width: 100%;
   height: 100%;
 }
-
 #interactive-scanner video {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
 }
-
 #interactive-scanner img {
   display: none !important;
 }
