@@ -488,16 +488,32 @@ ul {
 
 /* ── Pages ── */
 .page {
-  display: none;
   padding: 20px 16px calc(var(--nav-height) + 20px);
   min-height: 100vh;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px) scale(0.99);
+  transition: opacity .28s cubic-bezier(.4,0,.2,1),
+              transform .28s cubic-bezier(.4,0,.2,1),
+              visibility 0s linear .28s;
+  will-change: opacity, transform;
 }
 
 .page.active {
-  display: block;
-  animation: slideFadeIn .4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  position: relative;
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  transition: opacity .28s cubic-bezier(.4,0,.2,1),
+              transform .28s cubic-bezier(.4,0,.2,1);
+  transition-delay: .04s;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .page { transition: none; transform: none; }
+}
 /* ── Bottom Navigation ── */
 .bottom-nav {
   position: fixed;

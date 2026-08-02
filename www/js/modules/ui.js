@@ -48,9 +48,11 @@ export function setGreeting() {
 }
 export function navigateTo(page) {
   if (typeof closeScannerModal === 'function') closeScannerModal();
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const current = document.querySelector('.page.active');
   const target = document.getElementById(`page-${page}`);
-  if (target) target.classList.add('active');
+  if (!target || current === target) return;
+  if (current) current.classList.remove('active');
+  target.classList.add('active');
 
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.page === page);
