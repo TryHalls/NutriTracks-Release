@@ -4719,3 +4719,22 @@ body.dark-theme .scanner-conf-macros .mac-item strong {
     height: calc(100vh - env(safe-area-inset-bottom, 0px));
   }
 }
+.scanner-camera-wrap {
+  position: relative;
+  overflow: hidden;
+  /* ya tienes estas propiedades, solo asegúrate de que estén */
+}
+
+#interactive-scanner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#interactive-scanner video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
