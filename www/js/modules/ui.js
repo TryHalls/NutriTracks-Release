@@ -47,36 +47,35 @@ export function setGreeting() {
   if (elDate) elDate.textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 export function navigateTo(page) {
-  if (typeof closeScannerModal === 'function') closeScannerModal();
   const current = document.querySelector('.page.active');
   const target = document.getElementById(`page-${page}`);
   if (!target || current === target) return;
-  if (current) current.classList.remove('active');
+
+  // Activar will-change en ambas páginas antes de la transición
+  target.style.willChange = 'opacity, transform';
+  if (current) current.style.willChange = 'opacity, transform';
+
+  current?.classList.remove('active');
   target.classList.add('active');
 
-  document.querySelectorAll('.nav-item').forEach(n => {
-    n.classList.toggle('active', n.dataset.page === page);
-  });
-  App.currentPage = page;
+  // Limpiar will-change después de la transición (300ms)
+  setTimeout(() => {
+    target.style.willChange = 'auto';
+    if (current) current.style.willChange = 'auto';
+  }, 300);
 
-  const actionBtn = document.getElementById('topbar-action-btn');
-  const iconPlus = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-  if (page === 'diary') {
-    actionBtn.innerHTML = iconPlus;
-    actionBtn.onclick = () => openAddFood(null, App.selectedAIMeal || 'breakfast');
-  } else if (page === 'progress') {
-    actionBtn.innerHTML = '<i data-lucide="clipboard-pen"></i>';
-    actionBtn.onclick = () => document.getElementById('log-weight-input')?.focus();
-  } else {
-    actionBtn.innerHTML = iconPlus;
-    actionBtn.onclick = () => navigateTo('diary');
-  }
+  // Actualizar navegación y otros estados...
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navBtn = document.querySelector(`.nav-item[data-page="${page}"]`);
+  if (navBtn) navBtn.classList.add('active');
 
+  // Disparar refrescos específicos según la página
   if (page === 'home') refreshDashboard();
   if (page === 'diary') refreshDiary();
-  if (page === 'progress') refreshProgress();
-  if (page === 'water') refreshWaterPage();
-  if (page === 'profile') refreshProfile();
+  if (page === 'water') renderWaterPage();
+  if (page === 'progress') loadAndRenderWeightChart();
+  if (page === 'profile') loadProfile();
+}
 
   /* Re-render Lucide icons for dynamically changed elements */
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -398,25 +397,38 @@ export async function saveEditedAIFoods() {
   const mealType = App.selectedAIMeal || 'breakfast';
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
 
-  for (const a of foods) {
-    saveFoodLogLocal({
-      id: crypto.randomUUID(),
-      user_id: App.user?.id || 'local',
-      date: dateStr,
-      meal_type: mealType,
-      food_name: a.alimento,
-      quantity: a.gramos_estimados,
-      calories: a.kcal,
-      protein: a.proteinas,
-      carbs: a.carbohidratos,
-      fat: a.grasas,
-      fiber: 0,
-      sugar: 0,
-      source: 'ai',
-      ai_input_mode: App.lastAIInputMode,
-    });
-  }
+  // 1. Construir TODOS los logs en un array
+  const newLogs = foods.map(a => ({
+    id: crypto.randomUUID(),
+    user_id: App.user?.id || 'local',
+    date: dateStr,
+    meal_type: mealType,
+    food_name: a.alimento,
+    quantity: a.gramos_estimados,
+    calories: a.kcal,
+    protein: a.proteinas,
+    carbs: a.carbohidratos,
+    fat: a.grasas,
+    fiber: 0,
+    sugar: 0,
+    source: 'ai',
+    ai_input_mode: App.lastAIInputMode,
+  }));
 
+  // 2. Obtener los logs existentes para este día
+  const key = 'food_logs_' + dateStr;
+  const existing = LS.get(key, []);
+
+  // 3. Crear un Set con los IDs de los nuevos logs (para evitar duplicados)
+  const ids = new Set(newLogs.map(l => l.id));
+
+  // 4. Filtrar los existentes que no estén en el nuevo lote
+  const filtered = existing.filter(l => !ids.has(l.id));
+
+  // 5. Guardar TODO en UNA sola operación
+  LS.set(key, [...filtered, ...newLogs]);
+
+  // El resto del código igual
   closeAIFoodEditModal();
   clearAIResults();
   clearAIImageSelection(true);

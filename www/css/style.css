@@ -456,7 +456,7 @@ ul {
   visibility: hidden;
   transform: translateY(10px);
   transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s linear 0.25s;
-  will-change: opacity, transform;
+  /* will-change eliminado */
   z-index: 1;
 }
 
