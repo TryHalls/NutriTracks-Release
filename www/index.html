@@ -296,125 +296,6 @@
       </span>
     </button>
 
-    <!-- ══════════════════════════════════════════════
-         SMART SCANNER MODAL (MOVED INSIDE HOME TAB)
-    ══════════════════════════════════════════════ -->
-    <div class="scanner-overlay" id="scanner-container" aria-modal="true" role="dialog" aria-label="Escáner de productos" style="display: none;">
-      <div class="scanner-sheet">
-
-        <!-- Header -->
-        <div class="scanner-header">
-          <div class="scanner-header-left">
-            <span class="scanner-title-icon"><i data-lucide="scan-barcode"></i></span>
-            <div>
-              <div class="scanner-title">Escáner Inteligente</div>
-              <div class="scanner-subtitle" id="scanner-subtitle">Apunta al código de barras del producto</div>
-            </div>
-          </div>
-          <button class="scanner-close-btn" id="scanner-close-btn" type="button" title="Cerrar escáner" aria-label="Cerrar escáner">
-            <svg alt="Icono" role="img" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-
-        <!-- Phase indicator -->
-        <div class="scanner-phases" id="scanner-phases">
-          <div class="scanner-phase active" id="phase-1">
-            <span class="phase-num">1</span>
-            <span class="phase-lbl">Código de barras</span>
-          </div>
-          <div class="scanner-phase-sep">→</div>
-          <div class="scanner-phase" id="phase-2">
-            <span class="phase-num">2</span>
-            <span class="phase-lbl">API / Etiqueta IA</span>
-          </div>
-          <div class="scanner-phase-sep">→</div>
-          <div class="scanner-phase" id="phase-3">
-            <span class="phase-num">3</span>
-            <span class="phase-lbl">Registro</span>
-          </div>
-        </div>
-
-        <!-- Camera / Scanner Area -->
-        <div class="scanner-camera-wrap" id="scanner-camera-wrap">
-          <div id="interactive-scanner" class="scanner-viewport" aria-label="Cámara para escanear" role="region"></div>
-          <div class="scanner-laser"></div>
-        </div>
-
-        <!-- Status bar inside modal -->
-        <div class="scanner-status" id="scanner-status">
-                    <div class="scanner-spinner" id="scanner-spinner" style="display:none">
-            <div class="scan-orb"></div>
-            <span id="scanner-status-text" aria-live="polite" aria-atomic="true">Inicializando cámara…</span>
-            <button id="btn-scanner-retry-cam" type="button" class="btn-secondary hidden" style="margin-top:10px;" aria-label="Reintentar cámara">Reintentar cámara</button>
-          </div>
-          <div id="scanner-barcode-result" class="scanner-barcode-result" style="display:none"></div>
-        </div>
-
-        
-        <!-- Scanner Confirmation -->
-        <div class="scanner-confirmation" id="scanner-confirmation" style="display:none">
-          <div class="scanner-conf-card">
-            <h3 id="scanner-conf-name" class="scanner-conf-name">Producto</h3>
-            <div class="scanner-conf-macros">
-              <div class="mac-item"><span>Kcal</span><strong id="scanner-conf-kcal">0</strong></div>
-              <div class="mac-item"><span>Prot</span><strong id="scanner-conf-prot">0</strong></div>
-              <div class="mac-item"><span>Carb</span><strong id="scanner-conf-carb">0</strong></div>
-              <div class="mac-item"><span>Grasa</span><strong id="scanner-conf-fat">0</strong></div>
-            </div>
-            <div class="scanner-conf-input form-group">
-              <label for="scanner-conf-grams" class="form-label">Cantidad (g):</label>
-              <input type="number" id="scanner-conf-grams" class="form-input" value="100" min="1" step="1" aria-describedby="scanner-conf-grams-desc" />
-              <span id="scanner-conf-grams-desc" class="sr-only">Ingrese la cantidad en gramos</span>
-            </div>
-            <button class="btn-confirm-add" id="btn-scanner-confirm" type="button" aria-label="Guardar alimento escaneado">Guardar alimento</button>
-          </div>
-        </div>
-
-        <!-- Scanner Manual Entry Fallback -->
-        <div class="scanner-not-found" id="scanner-not-found" style="display:none">
-          <div class="empty-icon"><i data-lucide="search-x"></i></div>
-          <p>Producto no encontrado en la base de datos.</p>
-          <div class="scanner-not-found-actions">
-            <button class="btn-primary" id="btn-fallback-photo" type="button" aria-label="Tomar foto de etiqueta">
-              <i data-lucide="camera" class="lucide-pill"></i> Tomar foto de etiqueta
-            </button>
-            <div class="scanner-manual-code-entry" style="display:flex;gap:8px;margin:8px 0;">
-               <input type="text" id="scanner-manual-code" class="form-input" placeholder="Código manual" aria-label="Ingresar código de barras manualmente" />
-               <button class="btn-secondary" id="btn-manual-code-search" type="button" aria-label="Buscar código" style="padding:0 12px;"><i data-lucide="search"></i></button>
-            </div>
-            <button class="btn-secondary" id="btn-fallback-manual" type="button" aria-label="Registrar manualmente">
-              <i data-lucide="pencil" class="lucide-pill"></i> Registrar manualmente
-            </button>
-            <button class="btn-secondary" id="btn-fallback-retry" type="button" aria-label="Buscar otro código">
-              <i data-lucide="refresh-cw" class="lucide-pill"></i> Buscar otro código
-            </button>
-          </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="scanner-actions">
-          <!-- Meal selector -->
-          <div class="scanner-meal-row">
-            <span class="scanner-meal-label">Añadir a:</span>
-            <div class="scanner-meal-pills">
-              <button aria-pressed="false" aria-label="Seleccionar Desayuno" class="scanner-meal-pill active" data-meal="breakfast" type="button"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
-              <button aria-pressed="false" aria-label="Seleccionar Almuerzo" class="scanner-meal-pill" data-meal="lunch" type="button"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
-              <button aria-pressed="false" aria-label="Seleccionar Cena" class="scanner-meal-pill" data-meal="dinner" type="button"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
-              <button aria-pressed="false" aria-label="Seleccionar Snack" class="scanner-meal-pill" data-meal="snack" type="button"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
-            </div>
-          </div>
-
-          <!-- Photo label fallback -->
-          <button aria-label="Tomar foto a etiqueta" class="btn-photo-label" id="btn-photo-label" type="button">
-            <i data-lucide="camera" class="lucide-pill"></i> Tomar foto a la Tabla Nutricional
-          </button>
-
-          <!-- Hidden file input for label photo -->
-          <input type="file" id="scanner-label-input" class="hidden" accept="image/*" capture="environment"/>
-        </div>
-
-      </div>
-    </div>
 
     <!-- ════════════════════════════════════════
          AI COACH INSIGHTS CARD
@@ -864,6 +745,131 @@
       <span>Perfil</span>
     </button>
   </nav>
+
+  <!-- ══════════════════════════════════════════════
+       SMART SCANNER MODAL (moved out of .page so its
+       position:fixed is relative to the real viewport,
+       not trapped inside .page's transform containing block)
+  ══════════════════════════════════════════════ -->
+    <!-- ══════════════════════════════════════════════
+         SMART SCANNER MODAL (MOVED INSIDE HOME TAB)
+    ══════════════════════════════════════════════ -->
+    <div class="scanner-overlay" id="scanner-container" aria-modal="true" role="dialog" aria-label="Escáner de productos" style="display: none;">
+      <div class="scanner-sheet">
+
+        <!-- Header -->
+        <div class="scanner-header">
+          <div class="scanner-header-left">
+            <span class="scanner-title-icon"><i data-lucide="scan-barcode"></i></span>
+            <div>
+              <div class="scanner-title">Escáner Inteligente</div>
+              <div class="scanner-subtitle" id="scanner-subtitle">Apunta al código de barras del producto</div>
+            </div>
+          </div>
+          <button class="scanner-close-btn" id="scanner-close-btn" type="button" title="Cerrar escáner" aria-label="Cerrar escáner">
+            <svg alt="Icono" role="img" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- Phase indicator -->
+        <div class="scanner-phases" id="scanner-phases">
+          <div class="scanner-phase active" id="phase-1">
+            <span class="phase-num">1</span>
+            <span class="phase-lbl">Código de barras</span>
+          </div>
+          <div class="scanner-phase-sep">→</div>
+          <div class="scanner-phase" id="phase-2">
+            <span class="phase-num">2</span>
+            <span class="phase-lbl">API / Etiqueta IA</span>
+          </div>
+          <div class="scanner-phase-sep">→</div>
+          <div class="scanner-phase" id="phase-3">
+            <span class="phase-num">3</span>
+            <span class="phase-lbl">Registro</span>
+          </div>
+        </div>
+
+        <!-- Camera / Scanner Area -->
+        <div class="scanner-camera-wrap" id="scanner-camera-wrap">
+          <div id="interactive-scanner" class="scanner-viewport" aria-label="Cámara para escanear" role="region"></div>
+          <div class="scanner-laser"></div>
+        </div>
+
+        <!-- Status bar inside modal -->
+        <div class="scanner-status" id="scanner-status">
+                    <div class="scanner-spinner" id="scanner-spinner" style="display:none">
+            <div class="scan-orb"></div>
+            <span id="scanner-status-text" aria-live="polite" aria-atomic="true">Inicializando cámara…</span>
+            <button id="btn-scanner-retry-cam" type="button" class="btn-secondary hidden" style="margin-top:10px;" aria-label="Reintentar cámara">Reintentar cámara</button>
+          </div>
+          <div id="scanner-barcode-result" class="scanner-barcode-result" style="display:none"></div>
+        </div>
+
+        
+        <!-- Scanner Confirmation -->
+        <div class="scanner-confirmation" id="scanner-confirmation" style="display:none">
+          <div class="scanner-conf-card">
+            <h3 id="scanner-conf-name" class="scanner-conf-name">Producto</h3>
+            <div class="scanner-conf-macros">
+              <div class="mac-item"><span>Kcal</span><strong id="scanner-conf-kcal">0</strong></div>
+              <div class="mac-item"><span>Prot</span><strong id="scanner-conf-prot">0</strong></div>
+              <div class="mac-item"><span>Carb</span><strong id="scanner-conf-carb">0</strong></div>
+              <div class="mac-item"><span>Grasa</span><strong id="scanner-conf-fat">0</strong></div>
+            </div>
+            <div class="scanner-conf-input form-group">
+              <label for="scanner-conf-grams" class="form-label">Cantidad (g):</label>
+              <input type="number" id="scanner-conf-grams" class="form-input" value="100" min="1" step="1" aria-describedby="scanner-conf-grams-desc" />
+              <span id="scanner-conf-grams-desc" class="sr-only">Ingrese la cantidad en gramos</span>
+            </div>
+            <button class="btn-confirm-add" id="btn-scanner-confirm" type="button" aria-label="Guardar alimento escaneado">Guardar alimento</button>
+          </div>
+        </div>
+
+        <!-- Scanner Manual Entry Fallback -->
+        <div class="scanner-not-found" id="scanner-not-found" style="display:none">
+          <div class="empty-icon"><i data-lucide="search-x"></i></div>
+          <p>Producto no encontrado en la base de datos.</p>
+          <div class="scanner-not-found-actions">
+            <button class="btn-primary" id="btn-fallback-photo" type="button" aria-label="Tomar foto de etiqueta">
+              <i data-lucide="camera" class="lucide-pill"></i> Tomar foto de etiqueta
+            </button>
+            <div class="scanner-manual-code-entry" style="display:flex;gap:8px;margin:8px 0;">
+               <input type="text" id="scanner-manual-code" class="form-input" placeholder="Código manual" aria-label="Ingresar código de barras manualmente" />
+               <button class="btn-secondary" id="btn-manual-code-search" type="button" aria-label="Buscar código" style="padding:0 12px;"><i data-lucide="search"></i></button>
+            </div>
+            <button class="btn-secondary" id="btn-fallback-manual" type="button" aria-label="Registrar manualmente">
+              <i data-lucide="pencil" class="lucide-pill"></i> Registrar manualmente
+            </button>
+            <button class="btn-secondary" id="btn-fallback-retry" type="button" aria-label="Buscar otro código">
+              <i data-lucide="refresh-cw" class="lucide-pill"></i> Buscar otro código
+            </button>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="scanner-actions">
+          <!-- Meal selector -->
+          <div class="scanner-meal-row">
+            <span class="scanner-meal-label">Añadir a:</span>
+            <div class="scanner-meal-pills">
+              <button aria-pressed="false" aria-label="Seleccionar Desayuno" class="scanner-meal-pill active" data-meal="breakfast" type="button"><i data-lucide="sunrise" class="lucide-pill"></i> Desayuno</button>
+              <button aria-pressed="false" aria-label="Seleccionar Almuerzo" class="scanner-meal-pill" data-meal="lunch" type="button"><i data-lucide="sun" class="lucide-pill"></i> Almuerzo</button>
+              <button aria-pressed="false" aria-label="Seleccionar Cena" class="scanner-meal-pill" data-meal="dinner" type="button"><i data-lucide="moon" class="lucide-pill"></i> Cena</button>
+              <button aria-pressed="false" aria-label="Seleccionar Snack" class="scanner-meal-pill" data-meal="snack" type="button"><i data-lucide="apple" class="lucide-pill"></i> Snack</button>
+            </div>
+          </div>
+
+          <!-- Photo label fallback -->
+          <button aria-label="Tomar foto a etiqueta" class="btn-photo-label" id="btn-photo-label" type="button">
+            <i data-lucide="camera" class="lucide-pill"></i> Tomar foto a la Tabla Nutricional
+          </button>
+
+          <!-- Hidden file input for label photo -->
+          <input type="file" id="scanner-label-input" class="hidden" accept="image/*" capture="environment"/>
+        </div>
+
+      </div>
+    </div>
 
 </div><!-- /app -->
 

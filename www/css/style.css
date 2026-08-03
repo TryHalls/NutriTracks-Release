@@ -2189,6 +2189,19 @@ ul {
   color: var(--gray-500);
 }
 
+/* Wraps dot + name/qty + source badge on the left side of a food row.
+   This rule was missing entirely, which is why the dot floated above
+   the name instead of sitting next to it, and why long food names
+   pushed the "XXX kcal" figure off the edge of the screen instead of
+   truncating with an ellipsis. */
+.food-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .food-item-info {
   flex: 1;
   min-width: 0;
@@ -2346,21 +2359,6 @@ body.dark-theme .fav-quick-cal {
 .fav-quick-actions {
   display: flex;
   gap: 8px;
-}
-
-.btn-quick-add {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: .78rem;
-  font-weight: 600;
-  transition: all var(--transition);
-}
-
-.btn-quick-add:hover {
-  background: var(--emerald-600);
 }
 
 .btn-quick-rem {
@@ -3997,7 +3995,7 @@ body.dark-theme .form-input {
   flex-shrink: 0;
 }
 
-.btn-quick-add {
+.btn-fav-quick-add {
   font-size: .78rem;
   font-weight: 700;
   padding: 5px 10px;
@@ -4009,7 +4007,7 @@ body.dark-theme .form-input {
   transition: opacity .15s;
 }
 
-.btn-quick-add:hover {
+.btn-fav-quick-add:hover {
   opacity: .85;
 }
 
@@ -4722,12 +4720,6 @@ body.dark-theme .scanner-conf-macros .mac-item strong {
     height: calc(100vh - env(safe-area-inset-bottom, 0px));
   }
 }
-.scanner-camera-wrap {
-  position: relative;
-  overflow: hidden;
-  /* ya tienes estas propiedades, solo asegúrate de que estén */
-}
-
 #interactive-scanner {
   margin: 0;
   padding: 0;
@@ -4736,10 +4728,4 @@ body.dark-theme .scanner-conf-macros .mac-item strong {
   left: 0;
   width: 100% !important;
   height: 100% !important;
-}
-
-#interactive-scanner video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
 }
