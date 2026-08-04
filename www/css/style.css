@@ -2796,6 +2796,44 @@ body.dark-theme .btn-quick-rem:hover {
   background: linear-gradient(135deg, var(--emerald-500), var(--emerald-600));
 }
 
+/* ── Edit Food Modal (editar alimento registrado) ── */
+.btn-edit-fav {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--gray-200);
+  background: var(--white);
+  color: #f59e0b;
+  font-size: 1.05rem;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform var(--transition), border-color var(--transition), background-color var(--transition);
+}
+.btn-edit-fav:hover {
+  transform: scale(1.08);
+  border-color: #f59e0b;
+}
+.btn-edit-delete {
+  color: var(--danger) !important;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.btn-edit-delete:hover {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: var(--danger) !important;
+}
+.edit-food-extra {
+  font-size: .8rem;
+  color: var(--gray-500);
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-top: 10px;
+}
+
 .ai-skeleton-row {
   display: flex;
   align-items: center;

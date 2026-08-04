@@ -66,6 +66,8 @@ export function navigateTo(page) {
     if (current) current.style.willChange = 'auto';
   }, 300);
 
+  App.currentPage = page; /* P2: fijar la página activa para refrescos post-guardado */
+
   // Actualizar navegación y otros estados...
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navBtn = document.querySelector(`.nav-item[data-page="${page}"]`);
@@ -964,6 +966,139 @@ export async function deleteFoodLog(logId) {
   await refreshDiary();
   if (App.currentPage === 'home') refreshDashboard();
 }
+
+/* ══════════════════════════════════════════════════════════════
+   EDITAR ALIMENTO YA REGISTRADO (modal de edición)
+   Tocar un food-item no-IA abre este modal: permite ajustar
+   gramos (con reescalado proporcional de macros), nombre y macros.
+   ══════════════════════════════════════════════════════════════ */
+let _editFoodLogId = null;
+let _editFoodBase = null; // valores originales para el reescalado por gramos
+
+export function openEditFoodModal(logId) {
+  const log = App.diaryLogs.find(l => l.id === logId);
+  if (!log) return;
+  _editFoodLogId = logId;
+  _editFoodBase = {
+    grams: Number(log.quantity) || 0,
+    kcal: Number(log.calories) || 0,
+    protein: Number(log.protein) || 0,
+    carbs: Number(log.carbs) || 0,
+    fat: Number(log.fat) || 0,
+  };
+
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  setVal('edit-food-name', log.food_name || '');
+  setVal('edit-food-grams', _editFoodBase.grams);
+  setVal('edit-food-kcal', _editFoodBase.kcal);
+  setVal('edit-food-protein', _editFoodBase.protein);
+  setVal('edit-food-carbs', _editFoodBase.carbs);
+  setVal('edit-food-fat', _editFoodBase.fat);
+
+  /* Fibra/azúcar: solo informativo (no editables), se conservan al guardar */
+  const fiberEl = document.getElementById('edit-food-fiber');
+  const sugarEl = document.getElementById('edit-food-sugar');
+  const extraEl = document.getElementById('edit-food-extra');
+  if (fiberEl) fiberEl.textContent = Math.round(log.fiber || 0);
+  if (sugarEl) sugarEl.textContent = Math.round(log.sugar || 0);
+  if (extraEl) extraEl.style.display = (log.fiber || log.sugar) ? 'block' : 'none';
+
+  /* La nota de escalado proporcional solo aplica si hay gramos base > 0
+     (las entradas rápidas guardan quantity=0 y no escalan macros) */
+  const scaleNote = document.getElementById('edit-food-scale-note');
+  if (scaleNote) scaleNote.style.display = _editFoodBase.grams > 0 ? 'block' : 'none';
+
+  updateEditFoodFavBtn(log);
+  document.getElementById('edit-food-modal')?.classList.add('open');
+}
+
+function updateEditFoodFavBtn(log) {
+  const btn = document.getElementById('edit-food-fav-btn');
+  if (!btn) return;
+  const isFav = getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
+  btn.textContent = isFav ? '★' : '☆';
+}
+
+export function closeEditFoodModal(event) {
+  if (event && event.target !== document.getElementById('edit-food-modal')) return;
+  document.getElementById('edit-food-modal')?.classList.remove('open');
+  _editFoodLogId = null;
+  _editFoodBase = null;
+}
+
+export async function saveEditedFoodLog() {
+  if (!_editFoodLogId) return;
+  const log = App.diaryLogs.find(l => l.id === _editFoodLogId);
+  if (!log) {
+    /* El log ya no existe (p. ej. se cambió de fecha con el modal abierto) */
+    closeEditFoodModal();
+    showToast('Este alimento ya no existe en el diario', 'error');
+    return;
+  }
+
+  const name = document.getElementById('edit-food-name')?.value.trim();
+  if (!name) { showToast('El nombre no puede estar vacío', 'error'); return; }
+  const grams = Math.max(0, Math.round(Number(document.getElementById('edit-food-grams')?.value) || 0));
+  const kcal = Math.max(0, Math.round(Number(document.getElementById('edit-food-kcal')?.value) || 0));
+  const protein = Utils.round1(document.getElementById('edit-food-protein')?.value);
+  const carbs = Utils.round1(document.getElementById('edit-food-carbs')?.value);
+  const fat = Utils.round1(document.getElementById('edit-food-fat')?.value);
+
+  const updated = { ...log, food_name: name, quantity: grams, calories: kcal, protein, carbs, fat };
+  saveFoodLogLocal(updated);
+  closeEditFoodModal();
+  showToast('Alimento actualizado ✓', 'success');
+  await refreshDiary();
+  if (App.currentPage === 'home') refreshDashboard();
+}
+
+export function setupEditFoodListeners() {
+  const gramsInput = document.getElementById('edit-food-grams');
+  gramsInput?.addEventListener('input', (e) => {
+    if (!_editFoodBase) return;
+    const newGrams = Math.max(0, Number(e.target.value) || 0);
+    if (_editFoodBase.grams > 0) {
+      const ratio = newGrams / _editFoodBase.grams;
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = Utils.round1(v); };
+      setVal('edit-food-kcal', Math.max(0, Math.round(_editFoodBase.kcal * ratio)));
+      setVal('edit-food-protein', _editFoodBase.protein * ratio);
+      setVal('edit-food-carbs', _editFoodBase.carbs * ratio);
+      setVal('edit-food-fat', _editFoodBase.fat * ratio);
+    }
+  });
+
+  /* Si el usuario edita un macro manualmente, actualizar la base para
+     que los siguientes cambios de gramos partan de la nueva configuración */
+  ['edit-food-kcal', 'edit-food-protein', 'edit-food-carbs', 'edit-food-fat'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      if (!_editFoodBase) return;
+      _editFoodBase.grams = Math.max(0, Number(document.getElementById('edit-food-grams')?.value) || 0);
+      _editFoodBase.kcal = Number(document.getElementById('edit-food-kcal')?.value) || 0;
+      _editFoodBase.protein = Number(document.getElementById('edit-food-protein')?.value) || 0;
+      _editFoodBase.carbs = Number(document.getElementById('edit-food-carbs')?.value) || 0;
+      _editFoodBase.fat = Number(document.getElementById('edit-food-fat')?.value) || 0;
+    });
+  });
+
+  document.getElementById('edit-food-fav-btn')?.addEventListener('click', () => {
+    const log = App.diaryLogs.find(l => l.id === _editFoodLogId);
+    if (!log) return;
+    toggleFavorite(log);
+    updateEditFoodFavBtn(log);
+  });
+
+  document.getElementById('evt_edit_del')?.addEventListener('click', () => {
+    if (!_editFoodLogId) return;
+    const logId = _editFoodLogId;
+    closeEditFoodModal();
+    deleteFoodLog(logId);
+  });
+
+  document.getElementById('evt_edit_save')?.addEventListener('click', () => saveEditedFoodLog());
+
+  /* Cerrar al tocar el overlay (fuera de la hoja) */
+  document.getElementById('edit-food-modal')?.addEventListener('click', (event) => closeEditFoodModal(event));
+}
 export async function refreshDashboard() {
   if (!App.user) return;
   const todayStr = Utils.toDateStr(new Date());
@@ -1152,16 +1287,22 @@ export function createFoodItem(log, favIdentitySet) {
     : `<span class="food-source-badge manual">Manual</span>`;
   const dotClass = source === 'ai' ? 'food-item-dot ai-source' : 'food-item-dot';
   item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${log.quantity ? log.quantity + 'g' : '—'}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${Math.round(log.calories)} kcal</div>`;
-  const expanded = document.createElement('div');
-  expanded.className = 'food-item-expanded';
-  expanded.innerHTML = `<div class="food-micro-grid"> <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div> <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div> </div> <div style="display:flex;gap:8px;margin-top:12px;"> <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button> <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button> </div>`;
-  const btnFav = expanded.querySelector('.btn-fav-food');
-  btnFav.addEventListener('click', (e) => { e.stopPropagation(); addLogToFavorites(log.id, btnFav); });
-  const btnDel = expanded.querySelector('.btn-delete-food');
-  btnDel.addEventListener('click', (e) => { e.stopPropagation(); deleteFoodLog(log.id); });
-  item.onclick = () => expanded.classList.toggle('open');
+  if (source === 'ai') {
+    /* Los ítems de IA mantienen el expand (ver macros / favorito / eliminar) */
+    const expanded = document.createElement('div');
+    expanded.className = 'food-item-expanded';
+    expanded.innerHTML = `<div class="food-micro-grid"> <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div> <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div> </div> <div style="display:flex;gap:8px;margin-top:12px;"> <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button> <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button> </div>`;
+    const btnFav = expanded.querySelector('.btn-fav-food');
+    btnFav.addEventListener('click', (e) => { e.stopPropagation(); addLogToFavorites(log.id, btnFav); });
+    const btnDel = expanded.querySelector('.btn-delete-food');
+    btnDel.addEventListener('click', (e) => { e.stopPropagation(); deleteFoodLog(log.id); });
+    item.onclick = () => expanded.classList.toggle('open');
+    wrapper.appendChild(expanded);
+  } else {
+    /* Los ítems normales (local/OFF/manual) abren el modal de edición al tocarlos */
+    item.onclick = () => openEditFoodModal(log.id);
+  }
   wrapper.appendChild(item);
-  wrapper.appendChild(expanded);
   return wrapper;
 }
 export function toggleMealSection() { /* secciones siempre expandidas */ }

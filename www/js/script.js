@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (saveAIBtn) saveAIBtn.addEventListener('click', () => API.saveAIConfig());
 
   UI.setupAIEditorListeners();
+  UI.setupEditFoodListeners();
   UI.renderAIImagePreview();
   UI.initScannerEvents();
 

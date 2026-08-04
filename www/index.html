@@ -987,6 +987,58 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════
+     EDIT FOOD MODAL (editar alimento ya registrado)
+══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="edit-food-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">Editar alimento</div>
+      <button class="btn-edit-fav" id="edit-food-fav-btn" type="button" aria-label="Favorito" title="Favorito">☆</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group ai-edit-full">
+        <label class="form-label" for="edit-food-name">Nombre del alimento</label>
+        <input type="text" class="form-input" id="edit-food-name" placeholder="Ej. Pechuga de pollo"/>
+      </div>
+      <div class="ai-edit-grid">
+        <div class="form-group">
+          <label class="form-label" for="edit-food-grams">Peso (g)</label>
+          <input type="number" class="form-input" id="edit-food-grams" min="0" step="1"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-food-kcal">Calorías</label>
+          <input type="number" class="form-input" id="edit-food-kcal" min="0" step="1"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-food-protein">Proteínas</label>
+          <input type="number" class="form-input" id="edit-food-protein" min="0" step="0.1"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-food-carbs">Carbs</label>
+          <input type="number" class="form-input" id="edit-food-carbs" min="0" step="0.1"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-food-fat">Grasas</label>
+          <input type="number" class="form-input" id="edit-food-fat" min="0" step="0.1"/>
+        </div>
+      </div>
+      <div class="ai-edit-note" id="edit-food-scale-note">
+        ✦ Ajusta los gramos y los valores nutricionales se adaptarán proporcionalmente.
+      </div>
+      <div class="edit-food-extra" id="edit-food-extra" style="display:none">
+        Fibra: <strong id="edit-food-fiber">0</strong>g · Azúcar: <strong id="edit-food-sugar">0</strong>g
+        <small style="display:block;color:var(--gray-400);margin-top:2px">(no editables — se conservan al guardar)</small>
+      </div>
+    </div>
+    <div class="ai-edit-footer">
+      <button id="evt_edit_del" aria-label="Eliminar alimento" class="btn-secondary btn-edit-delete" type="button">Eliminar</button>
+      <button id="evt_edit_save" aria-label="Guardar cambios" class="btn-confirm-add" type="button">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Notifications -->
 <div class="toast-container" id="toast-container" role="alert" aria-live="assertive"></div>
 
