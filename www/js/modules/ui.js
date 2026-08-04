@@ -1761,9 +1761,13 @@ export async function exportData() {
     }
 
     try {
+        /* P2: La API key de IA (nt_ai_config) es sensible — NUNCA se incluye
+           en el respaldo para que no salga del dispositivo. */
+        const SENSITIVE_KEYS = ['nt_ai_config'];
         const backup = {};
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
+            if (SENSITIVE_KEYS.includes(key)) continue;
             backup[key] = localStorage.getItem(key);
         }
 
@@ -1841,6 +1845,10 @@ export function importData(event) {
         return;
       }
 
+      // Preservar la API key actual de IA: la exportación ya no la incluye,
+      // así que al importar NO se pierde la que ya tenía configurada el usuario.
+      const currentAIConfig = localStorage.getItem('nt_ai_config');
+
       // Solo limpiar claves con prefijo nt_ (no borrar datos de otros orígenes)
       Object.keys(localStorage)
         .filter(k => k.startsWith('nt_'))
@@ -1852,6 +1860,9 @@ export function importData(event) {
           localStorage.setItem(key, backup[key]);
         }
       }
+
+      // Restaurar la key actual (si el backup trae una, la local tiene prioridad)
+      if (currentAIConfig) localStorage.setItem('nt_ai_config', currentAIConfig);
 
       showToast("Datos importados exitosamente. Recargando...", "success");
       setTimeout(() => {

@@ -1,19 +1,25 @@
 /* ================================================================
-   NutriTrack Pro — Service Worker v3
+   NutriTrack Pro — Service Worker v4
    Estrategia:
      · App Shell + CDN → Cache-First (offline robusto)
-     · API externa (OFF, Gemini) → Network-First (datos frescos)
+     · API externa (OFF, Gemini) → Network-Only (datos frescos)
      · Navegación → Network con fallback a index.html
-   ================================================================ */
+   ================================================================
+   VERSIONADO:
+     · Sube VERSION en cada release. El nombre de caché la incorpora,
+       así que activate() limpia las cachés antiguas automáticamente.
+     · Las URLs con ?v= de APP_SHELL_LOCAL deben coincidir EXACTAMENTE
+       con las que referencia www/index.html (grep 'v=' www/index.html). */
 
-const CACHE_NAME = 'nutritrack-pro-cache-v3';
+const VERSION = 4;
+const CACHE_NAME = 'nutritrack-pro-cache-v' + VERSION;
 
 /* Recursos locales a cachear en la instalación */
 const APP_SHELL_LOCAL = [
   './',
   './index.html',
   './css/style.css?v=20.0',
-  './js/script.js?v=26.0',
+  './js/script.js?v=28.0',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -32,15 +38,15 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        /* Cachear locales con addAll; CDN de forma individual para no
-           bloquear la instalación si un recurso externo falla */
-        return cache.addAll(APP_SHELL_LOCAL).then(() =>
-          Promise.allSettled(
-            APP_SHELL_CDN.map(url =>
-              cache.add(new Request(url, { mode: 'cors' })).catch(() => {
-                /* Silenciar errores de CDN en instalación offline */
-              })
-            )
+        /* Tolerante: cada recurso se cachea individualmente y un fallo
+           (offline, CDN caído, recurso ausente) NO aborta la instalación.
+           Antes, un solo 404 rompía el addAll y el SW podía quedar
+           sin activarse nunca. */
+        return Promise.allSettled(
+          APP_SHELL.map(url =>
+            cache.add(new Request(url, { mode: 'cors' })).catch(() => {
+              /* Silenciar errores de recursos individuales */
+            })
           )
         );
       })
