@@ -237,6 +237,10 @@ export async function callGeminiAPI(apiKey, systemPrompt, userText, imageData = 
 
   let res;
 
+  /* P2: Timeout de 15s para no dejar la UI en "Analizando…" indefinidamente */
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
   try {
     res = await fetch(url, {
       method: 'POST',
@@ -253,12 +257,16 @@ export async function callGeminiAPI(apiKey, systemPrompt, userText, imageData = 
         generationConfig: {
           response_mime_type: 'application/json'
         }
-      })
+      }),
+      signal: controller.signal
     });
   } catch (networkErr) {
+    clearTimeout(timeoutId);
+    const timedOut = networkErr?.name === 'AbortError';
     console.error('[Gemini] Error de red:', networkErr);
-    throw new Error(`Gemini NETWORK_ERROR: ${networkErr.message}`);
+    throw new Error(timedOut ? 'Gemini TIMEOUT: la IA tardó demasiado en responder' : `Gemini NETWORK_ERROR: ${networkErr.message}`);
   }
+  clearTimeout(timeoutId);
 
   if (res.status !== 200) {
     const rawError = await res.text().catch(() => '');
@@ -397,17 +405,28 @@ export async function fallbackToOpenFoodFacts(text) {
 /* ── Renderizar resultados de IA ── */
 export async function callGeminiPlainText(cfg, userPrompt) {
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-goog-api-key': cfg.apiKey
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: userPrompt }] }],
-      generationConfig: { maxOutputTokens: 2500, temperature: 0.7 }
-    })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': cfg.apiKey
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: userPrompt }] }],
+        generationConfig: { maxOutputTokens: 2500, temperature: 0.7 }
+      }),
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err?.name === 'AbortError') throw new Error('Gemini TIMEOUT: la IA tardó demasiado en responder');
+    throw err;
+  }
+  clearTimeout(timeoutId);
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     throw new Error(`Gemini ${res.status}: ${e?.error?.message || ''}`);
@@ -645,22 +664,33 @@ export async function _analyzeLabelWithGemini(imageFile) {
     var processed = await processImageForAI(imageFile);
     var systemPrompt = 'Extrae los datos nutricionales de esta etiqueta y responde SOLO un JSON valido EXACTAMENTE con este formato:\n{"name":"Nombre del producto","calories":123,"protein":4.5,"carbs":20.1,"fat":2.3}\nNo agregues markdown, comentarios, ni texto fuera del JSON. Si falta un valor usa 0.';
     var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
-    var res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-goog-api-key': cfg.apiKey
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: systemPrompt },
-            { inline_data: { mime_type: 'image/jpeg', data: processed.base64 } }
-          ]
-        }],
-        generationConfig: { maxOutputTokens: 300, temperature: 0.1, response_mime_type: 'application/json' }
-      })
-    });
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, 15000);
+    var res;
+    try {
+      res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': cfg.apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: systemPrompt },
+              { inline_data: { mime_type: 'image/jpeg', data: processed.base64 } }
+            ]
+          }],
+          generationConfig: { maxOutputTokens: 300, temperature: 0.1, response_mime_type: 'application/json' }
+        }),
+        signal: controller.signal
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err && err.name === 'AbortError') throw new Error('Gemini TIMEOUT: la IA tardó demasiado en responder');
+      throw err;
+    }
+    clearTimeout(timeoutId);
     if (!res.ok) {
       var errData = await res.json().catch(function () { return {}; });
       throw new Error('Gemini ' + res.status + ': ' + (errData && errData.error ? errData.error.message : ''));

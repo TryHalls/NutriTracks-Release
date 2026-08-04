@@ -19,18 +19,16 @@ localStorage at runtime, never in files).
 ## 2. Run the server
 
 A plain static file server is all that is required (ES modules are blocked on
-`file://`, so serving over HTTP is mandatory). Python 3 is available system-wide:
+`file://`, so serving over HTTP is mandatory). Python 3 is available system-wide.
+
+**Use `.freebuff/serve.py`** (NOT bare `python3 -m http.server`): it serves the
+`www/` directory with `Cache-Control: no-store`, which prevents the browser
+from heuristically caching ES modules and serving stale `js/modules/*.js`
+after a code change (this caused the charts to appear missing in previews).
 
 ```bash
-cd www
-nohup python3 -m http.server 8000 --bind 127.0.0.1 \
-  > ../.freebuff/preview-<thread-id>.log 2>&1 < /dev/null &
-```
-
-or equivalently from anywhere:
-
-```bash
-python3 -m http.server 8000 --bind 127.0.0.1 --directory www
+nohup python3 .freebuff/serve.py 8000 \
+  > .freebuff/preview-<thread-id>.log 2>&1 < /dev/null &
 ```
 
 - Default port: **8000** (project default — the app itself defines none).

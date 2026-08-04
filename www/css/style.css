@@ -625,7 +625,7 @@ ul {
   height: 8px;
   border-radius: 4px;
   background: rgba(255, 255, 255, .3);
-  transition: all var(--transition);
+  transition: width var(--transition), background-color var(--transition);
 }
 
 .step-dot.active {
@@ -717,7 +717,7 @@ ul {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), transform var(--transition);
 }
 
 .gender-btn span.icon {
@@ -745,7 +745,7 @@ ul {
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition);
   text-align: left;
 }
 
@@ -791,7 +791,7 @@ ul {
   align-items: center;
   gap: 14px;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
 .goal-card:hover {
@@ -1162,7 +1162,7 @@ ul {
   padding: 14px;
   box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: all var(--transition);
+  transition: box-shadow var(--transition), transform var(--transition), border-color var(--transition), background-color var(--transition);
 }
 
 .meal-mini-card:hover {
@@ -1236,7 +1236,7 @@ ul {
   font-size: 1.1rem;
   display: grid;
   place-items: center;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
   cursor: pointer;
 }
 
@@ -1305,7 +1305,7 @@ ul {
   color: var(--ai-from);
   display: grid;
   place-items: center;
-  transition: all var(--transition);
+  transition: background-color var(--transition), transform var(--transition);
 }
 
 .ai-insight-refresh:hover {
@@ -1563,7 +1563,7 @@ ul {
   color: var(--ai-from);
   display: grid;
   place-items: center;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), transform var(--transition);
 }
 
 .ai-mic-btn:hover {
@@ -1607,7 +1607,7 @@ ul {
   align-items: center;
   justify-content: center;
   font-size: .9rem;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), transform var(--transition);
 }
 
 .ai-camera-btn:hover {
@@ -1706,7 +1706,7 @@ ul {
   font-size: .75rem;
   font-weight: 600;
   color: var(--gray-600);
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .ai-meal-pill.active {
@@ -1884,7 +1884,7 @@ ul {
   border-radius: var(--radius-md);
   font-size: .9rem;
   font-weight: 700;
-  transition: all var(--transition);
+  transition: box-shadow var(--transition), transform var(--transition);
   box-shadow: 0 4px 14px var(--ai-glow);
   margin-top: 10px;
 }
@@ -1914,7 +1914,7 @@ ul {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all var(--transition);
+  transition: box-shadow var(--transition), transform var(--transition);
   box-shadow: 0 4px 14px var(--ai-glow);
 }
 
@@ -1947,7 +1947,7 @@ ul {
   font-weight: 600;
   color: var(--gray-600);
   white-space: nowrap;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .btn-manual-search:hover {
@@ -2126,7 +2126,7 @@ ul {
   font-size: 1.1rem;
   display: grid;
   place-items: center;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), border-style var(--transition), color var(--transition);
 }
 
 .meal-add-btn:hover {
@@ -2278,7 +2278,7 @@ ul {
   color: var(--danger);
   font-size: .78rem;
   font-weight: 600;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
   width: fit-content;
 }
 
@@ -2297,7 +2297,7 @@ ul {
   color: #b45309;
   font-size: .78rem;
   font-weight: 600;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
   width: fit-content;
 }
 
@@ -2369,7 +2369,7 @@ body.dark-theme .fav-quick-cal {
   border-radius: var(--radius-sm);
   font-size: .78rem;
   font-weight: 600;
-  transition: all var(--transition);
+  transition: background-color var(--transition), color var(--transition);
 }
 
 .btn-quick-rem:hover {
@@ -2632,7 +2632,7 @@ body.dark-theme .btn-quick-rem:hover {
   border-radius: var(--radius-md);
   font-size: .85rem;
   font-weight: 700;
-  transition: all var(--transition);
+  transition: background-color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
 .btn-confirm-add:hover {
@@ -2683,7 +2683,7 @@ body.dark-theme .btn-quick-rem:hover {
   font-size: .76rem;
   font-weight: 700;
   max-width: 100%;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .ai-edit-chip.active {
@@ -2884,7 +2884,7 @@ body.dark-theme .btn-quick-rem:hover {
   font-size: 1.8rem;
   display: grid;
   place-items: center;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
 }
@@ -2912,7 +2912,7 @@ body.dark-theme .btn-quick-rem:hover {
   font-size: .9rem;
   font-weight: 700;
   border: none;
-  transition: all var(--transition);
+  transition: background-color var(--transition), color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
 .btn-water-add {
@@ -2998,7 +2998,7 @@ body.dark-theme .btn-quick-rem:hover {
   font-size: .88rem;
   font-weight: 700;
   white-space: nowrap;
-  transition: all var(--transition);
+  transition: background-color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
 .btn-log-weight:hover {
@@ -3402,7 +3402,7 @@ body.dark-theme .btn-quick-rem:hover {
   margin-bottom: 16px;
   cursor: pointer;
   text-align: left;
-  transition: all var(--transition);
+  transition: box-shadow var(--transition), transform var(--transition), background-color var(--transition), border-color var(--transition);
   box-shadow: 0 4px 16px rgba(245, 158, 11, .08);
   position: relative;
   overflow: hidden;
@@ -3546,7 +3546,7 @@ body.dark-theme .btn-quick-rem:hover {
   color: rgba(255, 255, 255, .7);
   display: grid;
   place-items: center;
-  transition: all var(--transition);
+  transition: background-color var(--transition), color var(--transition), transform var(--transition);
 }
 
 .scanner-close-btn:hover {
@@ -3777,7 +3777,7 @@ body.dark-theme .btn-quick-rem:hover {
   color: rgba(255, 255, 255, .6);
   font-size: .72rem;
   font-weight: 600;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .scanner-meal-pill.active {
@@ -3804,7 +3804,7 @@ body.dark-theme .btn-quick-rem:hover {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all var(--transition);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
 .btn-photo-label:hover {
@@ -4095,7 +4095,7 @@ body.dark-theme #meal-selector-ui .btn-secondary:hover {
   margin-bottom: 24px;
   cursor: pointer;
   text-align: left;
-  transition: all var(--transition);
+  transition: box-shadow var(--transition), transform var(--transition), background-color var(--transition), border-color var(--transition);
   box-shadow: 0 4px 16px rgba(244, 63, 94, .08);
   position: relative;
   overflow: hidden;
@@ -4135,7 +4135,7 @@ body.dark-theme #meal-selector-ui .btn-secondary:hover {
   padding: 16px;
   margin-bottom: 12px;
   box-shadow: var(--shadow-sm);
-  transition: all var(--transition);
+  transition: box-shadow var(--transition), transform var(--transition);
 }
 
 .chef-recipe-card:hover {
@@ -4361,7 +4361,7 @@ body.dark-theme .ai-config-card {
   overflow: hidden;
   background: linear-gradient(135deg, var(--ai-from), var(--ai-mid), var(--ai-to));
   background-size: 200% 200%;
-  transition: all .3s cubic-bezier(.4, 0, .2, 1);
+  transition: background-size .3s cubic-bezier(.4, 0, .2, 1), box-shadow .3s cubic-bezier(.4, 0, .2, 1), transform .3s cubic-bezier(.4, 0, .2, 1);
 }
 
 .btn-ai-analyze::before {

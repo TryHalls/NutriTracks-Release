@@ -10,7 +10,9 @@ function loadHtml5Qrcode() {
     const s = document.createElement('script');
     s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
     s.onload = resolve;
-    s.onerror = reject;
+    /* P2: Resetear el flag al fallar para que la precarga en idle no rompa el escáner
+       para toda la sesión (permite reintentar cuando vuelva la red) */
+    s.onerror = () => { _html5QrcodeLoaded = null; reject(new Error('html5-qrcode failed to load')); };
     document.head.appendChild(s);
   });
   return _html5QrcodeLoaded;
@@ -71,10 +73,22 @@ export function navigateTo(page) {
 
   // Disparar refrescos específicos según la página
   if (page === 'home') refreshDashboard();
-  if (page === 'diary') refreshDiary();
+  if (page === 'diary') {
+    refreshDiary();
+    /* P2: Precargar html5-qrcode en idle al entrar al Diario (escáner arranca rápido) */
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 2000));
+    idle(() => loadHtml5Qrcode().catch(() => {}));
+  }
   if (page === 'water') refreshWaterPage();
   if (page === 'progress') refreshProgress();
   if (page === 'profile') refreshProfile(); // ← CAMBIADO: loadProfile → refreshProfile
+
+  /* P2: Detener dictado por voz al salir del Diario (libera el micrófono) */
+  if (page !== 'diary' && App.recognition) {
+    try { App.recognition.stop(); } catch (_) {}
+    App.recognition = null;
+    document.getElementById('ai-mic-btn')?.classList.remove('recording');
+  }
 
   /* Re-render Lucide icons for dynamically changed elements */
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -347,6 +361,8 @@ export function persistCurrentAIFoodFromForm() {
   return updated;
 }
 export function selectAIFoodEditorItem(index) {
+  /* Limpiar el persist pendiente del debounce de gramos antes de cambiar de alimento */
+  clearTimeout(_gramsPersistTimer);
   persistCurrentAIFoodFromForm();
   loadAIFoodIntoEditor(index);
 }
@@ -366,6 +382,8 @@ export function openAIFoodEditModal(resetIndex = false) {
 }
 export function closeAIFoodEditModal(event) {
   if (event && event.target !== document.getElementById('ai-edit-modal')) return;
+  /* Limpiar el persist pendiente del debounce de gramos antes de cerrar */
+  clearTimeout(_gramsPersistTimer);
   persistCurrentAIFoodFromForm();
   document.getElementById('ai-edit-modal')?.classList.remove('open');
 }
@@ -442,6 +460,7 @@ export async function saveEditedAIFoods() {
   await refreshDiary();
   if (App.currentPage === 'home') refreshDashboard();
 }
+let _gramsPersistTimer = null;
 export function setupAIEditorListeners() {
   const gramsInput = document.getElementById('ai-edit-grams');
   
@@ -476,8 +495,10 @@ export function setupAIEditorListeners() {
       if (fatEl) fatEl.value = Utils.round1(current._base_fat * ratio);
     }
 
-    // 3. Persistir en el estado global
-    persistCurrentAIFoodFromForm();
+    // 3. Persistir en el estado global (debounced: el recálculo de campos es inmediato,
+    //    pero re-renderizar nav/resumen solo tras una pausa de escritura)
+    clearTimeout(_gramsPersistTimer);
+    _gramsPersistTimer = setTimeout(() => persistCurrentAIFoodFromForm(), 150);
   });
 
   // Escuchar cambios manuales en los macros para reiniciar la "base"
@@ -1084,8 +1105,12 @@ export function changeDate(delta) {
   App.currentDiaryDate = d;
   refreshDiary();
 }
+/* P2: Solo anima los ítems nuevos (evita re-disparar cascadeFadeIn sobre toda la lista) */
+let _renderedDiaryIds = new Set();
 export function renderDiaryMeals(logs) {
   const favIdentitySet = new Set(getFavorites().map(getFoodIdentity));
+  const newIds = new Set(logs.map(l => l.id));
+  const animateOnlyNew = _renderedDiaryIds.size > 0;
   ['breakfast', 'lunch', 'dinner', 'snack'].forEach(meal => {
     const mealLogs = logs.filter(l => l.meal_type === meal);
     const list = document.getElementById(`food-list-${meal}`);
@@ -1097,10 +1122,18 @@ export function renderDiaryMeals(logs) {
       return;
     }
     const fragment = document.createDocumentFragment();
-    mealLogs.forEach(log => fragment.appendChild(createFoodItem(log, favIdentitySet)));
+    mealLogs.forEach(log => {
+      const wrapper = createFoodItem(log, favIdentitySet);
+      // No re-animar ítems que ya estaban renderizados en el DOM
+      if (animateOnlyNew && _renderedDiaryIds.has(log.id)) {
+        wrapper.querySelector('.food-item')?.classList.remove('item-enter');
+      }
+      fragment.appendChild(wrapper);
+    });
     list.innerHTML = '';
     list.appendChild(fragment);
   });
+  _renderedDiaryIds = newIds;
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 export function createFoodItem(log, favIdentitySet) {
