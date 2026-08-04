@@ -72,8 +72,8 @@ export function navigateTo(page) {
   // Disparar refrescos específicos según la página
   if (page === 'home') refreshDashboard();
   if (page === 'diary') refreshDiary();
-  if (page === 'water') renderWaterPage();
-  if (page === 'progress') loadAndRenderWeightChart();
+  if (page === 'water') refreshWaterPage();
+  if (page === 'progress') refreshProgress();
   if (page === 'profile') refreshProfile(); // ← CAMBIADO: loadProfile → refreshProfile
 
   /* Re-render Lucide icons for dynamically changed elements */
