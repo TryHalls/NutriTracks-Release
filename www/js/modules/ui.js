@@ -1098,6 +1098,83 @@ export function setupEditFoodListeners() {
 
   /* Cerrar al tocar el overlay (fuera de la hoja) */
   document.getElementById('edit-food-modal')?.addEventListener('click', (event) => closeEditFoodModal(event));
+
+  /* ── Deslizar la hoja hacia abajo para cerrar con animación suave ── */
+  const sheet = document.querySelector('#edit-food-modal .modal-sheet');
+  if (sheet) {
+    const body = sheet.querySelector('.modal-body');
+    let startY = 0;
+    let dragging = false;
+    sheet.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      /* No secuestrar el gesto si el contenido interno está scrolleado */
+      if (body && body.scrollTop > 0) return;
+      startY = e.touches[0].clientY;
+      dragging = true;
+      sheet.classList.add('dragging');
+    }, { passive: true });
+    sheet.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const dy = e.touches[0].clientY - startY;
+      /* La hoja sigue al dedo; resistencia al deslizar hacia arriba */
+      const shift = dy > 0 ? dy : Math.round(dy * 0.2);
+      sheet.style.transform = `translateY(${shift}px)`;
+      if (dy > 0) {
+        const overlay = document.getElementById('edit-food-modal');
+        if (overlay) overlay.style.opacity = Math.max(0, 1 - dy / 420);
+      }
+    }, { passive: true });
+    const overlayEl = () => document.getElementById('edit-food-modal');
+    const resetDragStyles = () => {
+      sheet.classList.remove('dragging');
+      sheet.style.transform = '';
+      const overlay = overlayEl();
+      if (overlay) { overlay.style.opacity = ''; overlay.style.transition = ''; }
+    };
+    sheet.addEventListener('touchend', (e) => {
+      if (!dragging) return;
+      dragging = false;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (dy > 110) {
+        /* Cerrar: la hoja se desliza HACIA ABAJO con la transición suave y
+           después de la animación se cierra el modal (antes se reseteaba el
+           transform y la hoja volvía hacia arriba — anti-natural al gesto). */
+        const overlay = overlayEl();
+        sheet.classList.remove('dragging');
+        sheet.style.transform = `translateY(${Math.max(dy, 120)}px)`; // quedarse donde está
+        if (overlay) {
+          overlay.style.transition = 'opacity .3s ease';
+          overlay.style.opacity = '0';
+        }
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          sheet.style.transform = '';
+          sheet.removeEventListener('transitionend', onEnd);
+          closeEditFoodModal();
+        };
+        const onEnd = (ev) => {
+          if (ev.propertyName === 'transform') finish();
+        };
+        sheet.addEventListener('transitionend', onEnd);
+        /* Arrancar la animación de deslizamiento desde la posición actual */
+        void sheet.offsetHeight;
+        sheet.style.transform = 'translateY(105vh)';
+        /* Fallback por si transitionend no se dispara */
+        setTimeout(finish, 400);
+      } else {
+        /* Arrastre corto → vuelve a su lugar */
+        resetDragStyles();
+      }
+    }, { passive: true });
+    /* Gesto interrumpido por el sistema (llamada, notificación…): limpiar sin cerrar */
+    sheet.addEventListener('touchcancel', () => {
+      if (!dragging) return;
+      dragging = false;
+      resetDragStyles();
+    }, { passive: true });
+  }
 }
 export async function refreshDashboard() {
   if (!App.user) return;
@@ -1287,23 +1364,57 @@ export function createFoodItem(log, favIdentitySet) {
     : `<span class="food-source-badge manual">Manual</span>`;
   const dotClass = source === 'ai' ? 'food-item-dot ai-source' : 'food-item-dot';
   item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${log.quantity ? log.quantity + 'g' : '—'}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${Math.round(log.calories)} kcal</div>`;
-  if (source === 'ai') {
-    /* Los ítems de IA mantienen el expand (ver macros / favorito / eliminar) */
-    const expanded = document.createElement('div');
-    expanded.className = 'food-item-expanded';
-    expanded.innerHTML = `<div class="food-micro-grid"> <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div> <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div> <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div> </div> <div style="display:flex;gap:8px;margin-top:12px;"> <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button> <button class="btn-delete-food" style="margin-top:0;" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button> </div>`;
-    const btnFav = expanded.querySelector('.btn-fav-food');
-    btnFav.addEventListener('click', (e) => { e.stopPropagation(); addLogToFavorites(log.id, btnFav); });
-    const btnDel = expanded.querySelector('.btn-delete-food');
-    btnDel.addEventListener('click', (e) => { e.stopPropagation(); deleteFoodLog(log.id); });
-    item.onclick = () => expanded.classList.toggle('open');
-    wrapper.appendChild(expanded);
-  } else {
-    /* Los ítems normales (local/OFF/manual) abren el modal de edición al tocarlos */
-    item.onclick = () => openEditFoodModal(log.id);
-  }
+  /* Bloque expandible: macros + acciones (favorito / editar / eliminar).
+     Se inserta DESPUÉS del ítem en el DOM para que se despliegue hacia abajo
+     (antes iba antes en el orden de hijos y la info aparecía arriba del alimento). */
+  const expanded = document.createElement('div');
+  expanded.className = 'food-item-expanded';
+  expanded.innerHTML = `
+    <div class="food-expanded-inner">
+      <div class="food-micro-grid">
+        <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div>
+        <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div>
+        <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div>
+        <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div>
+      </div>
+      <div class="food-expanded-actions">
+        <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
+        <button class="btn-edit-food" aria-label="Editar alimento"><i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i> Editar</button>
+        <button class="btn-delete-food" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button>
+      </div>
+    </div>`;
+  expanded.querySelector('.btn-fav-food').addEventListener('click', (e) => {
+    e.stopPropagation();
+    addLogToFavorites(log.id, expanded.querySelector('.btn-fav-food'));
+  });
+  expanded.querySelector('.btn-edit-food').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openEditFoodModal(log.id);
+  });
+  expanded.querySelector('.btn-delete-food').addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteFoodLog(log.id);
+  });
+
+  /* Tocar el ítem despliega/contrae su info con animación suave */
+  item.onclick = () => toggleFoodExpanded(wrapper);
   wrapper.appendChild(item);
+  wrapper.appendChild(expanded);
   return wrapper;
+}
+
+/* Abre/cierra la info nutricional de un ítem del diario. Al abrir uno se
+   cierran los demás de todo el diario (solo un bloque desplegado a la vez). */
+function toggleFoodExpanded(wrapper) {
+  const expanded = wrapper.querySelector('.food-item-expanded');
+  if (!expanded) return;
+  const willOpen = !expanded.classList.contains('open');
+  if (willOpen) {
+    document.querySelectorAll('.food-item-expanded.open').forEach(el => {
+      if (el !== expanded) el.classList.remove('open');
+    });
+  }
+  expanded.classList.toggle('open');
 }
 export function toggleMealSection() { /* secciones siempre expandidas */ }
 

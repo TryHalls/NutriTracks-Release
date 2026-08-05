@@ -2229,17 +2229,39 @@ ul {
   flex-shrink: 0;
 }
 
+/* Expansión suave hacia abajo: anima la altura (grid 0fr → 1fr) + fade */
 .food-item-expanded {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .32s cubic-bezier(.4, 0, .2, 1);
+}
+
+.food-item-expanded > .food-expanded-inner {
+  overflow: hidden;
+  min-height: 0;
   background: var(--emerald-50);
+  border: 1px solid var(--emerald-100);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  margin: 4px 0 8px;
-  display: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity .28s ease, transform .32s cubic-bezier(.4, 0, .2, 1);
 }
 
 .food-item-expanded.open {
-  display: block;
-  animation: fadeIn .2s ease;
+  grid-template-rows: 1fr;
+}
+
+.food-item-expanded.open > .food-expanded-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.food-expanded-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
 }
 
 .food-micro-grid {
@@ -2303,6 +2325,35 @@ ul {
 
 .btn-fav-food:hover {
   background: #fef3c7;
+}
+
+.btn-edit-food {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--emerald-50);
+  border: 1px solid var(--emerald-200);
+  border-radius: var(--radius-sm);
+  color: var(--emerald-700);
+  font-size: .78rem;
+  font-weight: 600;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
+  width: fit-content;
+}
+
+.btn-edit-food:hover {
+  background: var(--emerald-100);
+}
+
+body.dark-theme .btn-edit-food {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+
+body.dark-theme .btn-edit-food:hover {
+  background: rgba(16, 185, 129, 0.2);
 }
 
 body.dark-theme .btn-fav-food {
@@ -2424,6 +2475,11 @@ body.dark-theme .btn-quick-rem:hover {
 
 .modal-overlay.open .modal-sheet {
   transform: translateY(0);
+}
+
+/* Mientras se arrastra la hoja no se anima el transform (sigue al dedo) */
+.modal-sheet.dragging {
+  transition: none;
 }
 
 .modal-handle {
