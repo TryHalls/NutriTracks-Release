@@ -19,7 +19,7 @@ const APP_SHELL_LOCAL = [
   './',
   './index.html',
   './css/style.css?v=20.0',
-  './js/script.js?v=28.0',
+  './js/script.js?v=29.0',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'

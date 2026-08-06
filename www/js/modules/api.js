@@ -603,6 +603,34 @@ export async function searchOpenFoodFacts(query) {
   return merged;
 }
 
+/* ── P0 Optimización: búsqueda HÍBRIDA en 2 fases.
+   Los resultados de la base local (instantáneos, ~3ms) se muestran de
+   inmediato; la API de Open Food Facts (hasta 4s) se suma después cuando
+   responde. Antes la UI esperaba la petición remota para renderizar HASTA
+   los resultados locales — la búsqueda se sentía lenta incluso en local. ── */
+export function searchFoodHybrid(query, onLocal, onMerged) {
+  if (!query || query.length < 2) return;
+
+  if (_searchAbortController) _searchAbortController.abort();
+  _searchAbortController = new AbortController();
+  const signal = _searchAbortController.signal;
+
+  const localResults = searchLocalFoodDatabase(query, 12);
+  if (typeof onLocal === 'function') onLocal(localResults);
+
+  searchOpenFoodFactsRemote(query, signal)
+    .then(apiResults => {
+      /* P0 fix race: si el usuario ya escribió otra búsqueda mientras esta
+         petición volaba, el AbortController ya no es el actual → descartar
+         (una respuesta obsoleta NO debe pisar los resultados nuevos). */
+      if (_searchAbortController?.signal !== signal) return;
+      const merged = mergeFoodResults(localResults, apiResults);
+      App.allFoods = merged;
+      if (typeof onMerged === 'function') onMerged(merged);
+    })
+    .catch(() => {});
+}
+
 function _safeTriggerLabelPhotoFallback() {
   try {
     if (typeof UI._showLabelPhotoFallbackUI === 'function') {

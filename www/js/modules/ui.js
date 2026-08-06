@@ -18,6 +18,58 @@ function loadHtml5Qrcode() {
   return _html5QrcodeLoaded;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   P0 Optimización/estabilidad: Chart.js y lucide se cargan con
+   `async` (no bloquean el arranque). Estas utilidades ejecutan el
+   código de gráficas cuando la librería ya está disponible; si el
+   CDN va lento o falla, la app NUNCA se rompe por `Chart is not
+   defined` (antes un `new Chart()` lanzaba y podía dejar el
+   dashboard vacío / la app rota al abrir en offline).
+   ══════════════════════════════════════════════════════════════ */
+const _chartQueue = [];
+const _chartQueued = {};
+function whenChartReady(fn) {
+  if (typeof window.Chart !== 'undefined') {
+    try { fn(); } catch (e) { console.error('[Chart] Error al crear gráfica:', e); }
+    return;
+  }
+  _chartQueue.push(fn);
+}
+/* Crea la gráfica una sola vez aunque se pida varias veces antes de que
+   cargue la librería (evita instancias duplicadas sobre el mismo canvas). */
+function ensureChartOnce(key, factory) {
+  if (_chartQueued[key]) return;
+  _chartQueued[key] = true;
+  whenChartReady(() => {
+    _chartQueued[key] = false;
+    factory();
+  });
+}
+/* Vigila la carga de las librerías async y vacía la cola + pinta iconos. */
+(function startLibWatcher() {
+  let tries = 0;
+  const poll = () => {
+    const chartReady = typeof window.Chart !== 'undefined';
+    if (chartReady && _chartQueue.length) {
+      const q = _chartQueue.splice(0);
+      q.forEach(fn => { try { fn(); } catch (e) { console.error('[Chart] Error al crear gráfica:', e); } });
+    }
+    if (typeof window.lucide !== 'undefined' && !window.__lucideIconsDone) {
+      window.__lucideIconsDone = true;
+      try { lucide.createIcons(); } catch (_) {}
+    }
+    if ((chartReady && typeof window.lucide !== 'undefined') || tries > 100) {
+      /* Si el watcher se rinde (CDN caído >10s), liberar los flags de creación
+         para que un reintento posterior (CDN recuperado) pueda crear las gráficas. */
+      if (tries > 100) Object.keys(_chartQueued).forEach(k => { _chartQueued[k] = false; });
+      return;
+    }
+    tries++;
+    setTimeout(poll, 100);
+  };
+  poll();
+})();
+
 export function showToast(message, type = 'success', icon = '') {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -567,7 +619,12 @@ export function clearAIResults() {
   App._pendingAIFoods = null;
   App.aiEditorIndex = 0;
 }
-export async function refreshAIInsight() {
+/* P0 Optimización: el insight IA se cachea por (día + totales) para no
+   disparar una llamada de red a Gemini en CADA visita al Home con los mismos
+   datos. El botón de refresh llama con force=true para forzar la reconsulta. */
+let _aiInsightSig = '';
+let _aiInsightText = null;
+export async function refreshAIInsight(force = false) {
   if (!App.user) return;
   const bodyEl = document.getElementById('ai-insight-body');
   const textEl = document.getElementById('ai-insight-text');
@@ -580,12 +637,21 @@ export async function refreshAIInsight() {
     (acc, l) => ({ cal: acc.cal + (l.calories || 0), prot: acc.prot + (l.protein || 0), carbs: acc.carbs + (l.carbs || 0), fat: acc.fat + (l.fat || 0) }),
     { cal: 0, prot: 0, carbs: 0, fat: 0 }
   );
+  const sig = todayStr + '|' + totals.cal + '|' + totals.prot + '|' + totals.carbs + '|' + totals.fat;
+
+  /* Sin cambios → reusar el texto ya renderizado (evita re-llamar a Gemini) */
+  if (!force && sig === _aiInsightSig && _aiInsightText !== null) {
+    textEl.textContent = _aiInsightText;
+    return;
+  }
+  _aiInsightSig = sig;
 
   const { daily_calories: goal, protein_goal: pGoal, carbs_goal: cGoal, fat_goal: fGoal } = App.user;
   const cfg = API.getAIConfig();
 
   if (!cfg) {
-    textEl.textContent = generateLocalInsight(totals, { cal: goal, prot: pGoal, carbs: cGoal, fat: fGoal });
+    _aiInsightText = generateLocalInsight(totals, { cal: goal, prot: pGoal, carbs: cGoal, fat: fGoal });
+    textEl.textContent = _aiInsightText;
     return;
   }
 
@@ -602,10 +668,12 @@ export async function refreshAIInsight() {
 Responde en español, 1-2 frases cortas y motivadoras. Da UNA recomendación específica. Sin emojis excesivos.`;
 
     const result = await API.callGeminiPlainText(cfg, prompt);
+    _aiInsightText = result;
     if (textEl) { textEl.textContent = result; textEl.style.display = 'block'; }
   } catch (e) {
+    _aiInsightText = generateLocalInsight(totals, { cal: goal, prot: pGoal, carbs: cGoal, fat: fGoal });
     if (textEl) {
-      textEl.textContent = generateLocalInsight(totals, { cal: goal, prot: pGoal, carbs: cGoal, fat: fGoal });
+      textEl.textContent = _aiInsightText;
       textEl.style.display = 'block';
     }
   } finally {
@@ -716,8 +784,13 @@ export function removeFavorite(favId) {
     favs = favs.filter(f => f.id !== favId);
   }
   LS.set('favorites', favs);
+  _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
   renderFavorites();
   showToast('Eliminado de favoritos', 'info');
+  /* P0 fix: refrescar el diario para que la estrella no quede obsoleta al
+     quitar un favorito desde el modal. Barato: la firma está invalidada,
+     solo se reconstruye lo necesario. */
+  if (App.diaryLogs?.length) refreshDiary();
 }
 export function renderFavorites() {
   const container = document.getElementById('favorites-list');
@@ -837,12 +910,23 @@ export async function searchFood(query) {
   }
 
   renderSearchSkeleton();
-  searchDebounceTimer = setTimeout(async () => {
-    const results = await API.searchOpenFoodFacts(q);
-    renderFoodSearchResults(results);
-    API.updateSearchSourceBadge(results);
-    document.getElementById('qty-picker-section')?.classList.add('hidden');
-    App.selectedFood = null;
+  searchDebounceTimer = setTimeout(() => {
+    /* P0 Optimización: híbrido en 2 fases — resultados LOCALES al instante
+       (base local, ~3ms) y los de Open Food Facts se suman cuando llegan.
+       Antes la UI esperaba la petición remota (hasta 4s) para mostrar TODO. */
+    API.searchFoodHybrid(
+      q,
+      (locals) => {
+        renderFoodSearchResults(locals);
+        API.updateSearchSourceBadge(locals);
+        document.getElementById('qty-picker-section')?.classList.add('hidden');
+        App.selectedFood = null;
+      },
+      (merged) => {
+        renderFoodSearchResults(merged);
+        API.updateSearchSourceBadge(merged);
+      }
+    );
   }, 350);
 }
 export function renderSearchSkeleton() {
@@ -1203,11 +1287,16 @@ export async function refreshDashboard() {
   updateCaloriesRing(totals.calories, App.user.daily_calories);
   updateMacroBars(totals);
 
-  ['breakfast', 'lunch', 'dinner', 'snack'].forEach(m => {
-    const mCal = App.todayLogs.filter(l => l.meal_type === m).reduce((s, l) => s + (l.calories || 0), 0);
+  /* P0 Optimización: una sola pasada sobre los logs (antes 4 filter+reduce) */
+  const mealCal = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+  for (let i = 0; i < App.todayLogs.length; i++) {
+    const m = App.todayLogs[i].meal_type;
+    if (mealCal[m] !== undefined) mealCal[m] += (App.todayLogs[i].calories || 0);
+  }
+  for (const m in mealCal) {
     const el = document.getElementById(`mini-${m}`);
-    if (el) el.textContent = Math.round(mCal) + ' kcal';
-  });
+    if (el) el.textContent = Math.round(mealCal[m]) + ' kcal';
+  }
 
   loadTodayWater();
   renderDashboardWater();
@@ -1237,6 +1326,7 @@ export function computeTotals(logs) {
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }
   );
 }
+let _ringData = null; /* P0: últimos datos del anillo mientras Chart.js carga (CDN async) */
 export function updateCaloriesRing(consumed, goal) {
   const remaining = Math.max(0, goal - consumed);
   const over = consumed > goal;
@@ -1259,10 +1349,15 @@ export function updateCaloriesRing(consumed, goal) {
     return;
   }
 
-  App.caloriesRingChart = new Chart(ctx.getContext('2d'), {
-    type: 'doughnut',
-    data: { datasets: [{ data: [displayConsumed, displayRemain], backgroundColor: [color, 'rgba(255,255,255,.2)'], borderWidth: 0, hoverOffset: 0 }] },
-    options: { cutout: '72%', responsive: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { duration: 700, easing: 'easeInOutQuart' } }
+  /* P0: creación resiliente — se ejecuta cuando Chart.js ya cargó (CDN async) */
+  _ringData = { ctx, displayConsumed, displayRemain, color };
+  ensureChartOnce('ring', () => {
+    if (App.caloriesRingChart || !_ringData) return;
+    App.caloriesRingChart = new Chart(_ringData.ctx.getContext('2d'), {
+      type: 'doughnut',
+      data: { datasets: [{ data: [_ringData.displayConsumed, _ringData.displayRemain], backgroundColor: [_ringData.color, 'rgba(255,255,255,.2)'], borderWidth: 0, hoverOffset: 0 }] },
+      options: { cutout: '72%', responsive: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { duration: 700, easing: 'easeInOutQuart' } }
+    });
   });
 }
 export function updateMacroBars(totals) {
@@ -1337,15 +1432,36 @@ export function changeDate(delta) {
 }
 /* P2: Solo anima los ítems nuevos (evita re-disparar cascadeFadeIn sobre toda la lista) */
 let _renderedDiaryIds = new Set();
+let _renderedDiaryDate = '';
+/* P0 Optimización: firma por (fecha + comida) → si los datos no cambiaron,
+   NO se reconstruye el DOM del diario (antes se re-renderizaba todo en cada
+   navegación al Diario o tras cada guardado). */
+const _mealSignatures = new Map();
 export function renderDiaryMeals(logs) {
+  const dateStr = Utils.toDateStr(App.currentDiaryDate);
+  if (dateStr !== _renderedDiaryDate) {
+    _renderedDiaryDate = dateStr;
+    _renderedDiaryIds = new Set();
+  }
   const favIdentitySet = new Set(getFavorites().map(getFoodIdentity));
   const newIds = new Set(logs.map(l => l.id));
   const animateOnlyNew = _renderedDiaryIds.size > 0;
+  /* P0 fix: el estado de favoritos se incluye en la firma para que al quitar
+     un favorito desde el modal la estrella del diario no quede obsoleta. */
+  const favSig = Array.from(favIdentitySet).sort().join(',');
+  let changed = false;
   ['breakfast', 'lunch', 'dinner', 'snack'].forEach(meal => {
     const mealLogs = logs.filter(l => l.meal_type === meal);
     const list = document.getElementById(`food-list-${meal}`);
     if (!list) return;
     const calEl = list.parentElement?.querySelector('.meal-cal-display');
+    const sig = (mealLogs.length
+      ? mealLogs.map(l => `${l.id}:${l.food_name}:${l.quantity}:${l.calories}:${l.protein}:${l.carbs}:${l.fat}:${l.fiber}:${l.source}`).join('|')
+      : '__EMPTY') + '#' + favSig;
+    const sigKey = dateStr + ':' + meal;
+    if (_mealSignatures.get(sigKey) === sig) return; /* sin cambios → no tocar el DOM */
+    _mealSignatures.set(sigKey, sig);
+    changed = true;
     if (calEl) calEl.textContent = Math.round(mealLogs.reduce((s, l) => s + (l.calories || 0), 0));
     if (!mealLogs.length) {
       list.innerHTML = `<div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados<br><small>Usa IA o búsqueda manual ↑</small></p></div>`;
@@ -1364,7 +1480,7 @@ export function renderDiaryMeals(logs) {
     list.appendChild(fragment);
   });
   _renderedDiaryIds = newIds;
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  if (changed && typeof lucide !== 'undefined') lucide.createIcons();
 }
 export function createFoodItem(log, favIdentitySet) {
   const isFav = favIdentitySet ? favIdentitySet.has(getFoodIdentity(log)) : getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
@@ -1436,10 +1552,12 @@ function toggleFoodExpanded(wrapper) {
 }
 export function toggleMealSection() { /* secciones siempre expandidas */ }
 
+/* P0 Optimización: escape de texto con tabla de caracteres (antes creaba un
+   elemento DOM por llamada — cientos de nodos por cada renderizado de listas). */
+const _ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export function escapeHtml(str) {
-  const d = document.createElement('div');
-  d.textContent = str || '';
-  return d.innerHTML;
+  /* P0: paridad con el comportamiento anterior (str || '') para falsy */
+  return String(str || '').replace(/[&<>"']/g, c => _ESC_MAP[c]);
 }
 export async function refreshWaterPage() {
   loadTodayWater();
@@ -1535,10 +1653,15 @@ export function renderWaterChart() {
     App.waterChartInst.update('none');
     return;
   }
-  App.waterChartInst = new Chart(canvas.getContext('2d'), {
-    type: 'bar',
-    data: { labels, datasets: [{ label: 'Vasos', data: values, backgroundColor: values.map(v => v >= goal ? '#3b82f6' : 'rgba(59,130,246,.4)'), borderRadius: 8, borderSkipped: false }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} vasos` } } }, scales: { y: { beginAtZero: true, max: goal + 2, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { stepSize: 2, font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+  /* P0: creación resiliente (CDN async) */
+  const cfg = { labels, values, goal };
+  ensureChartOnce('water', () => {
+    if (App.waterChartInst) return;
+    App.waterChartInst = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: { labels: cfg.labels, datasets: [{ label: 'Vasos', data: cfg.values, backgroundColor: cfg.values.map(v => v >= cfg.goal ? '#3b82f6' : 'rgba(59,130,246,.4)'), borderRadius: 8, borderSkipped: false }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} vasos` } } }, scales: { y: { beginAtZero: true, max: cfg.goal + 2, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { stepSize: 2, font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+    });
   });
 }
 export async function refreshProgress() {
@@ -1572,10 +1695,15 @@ export function loadAndRenderWeightChart() {
   }
 
   if (App.weightChartInst) { App.weightChartInst.data.labels = labels; App.weightChartInst.data.datasets[0].data = data; App.weightChartInst.update('none'); return; }
-  App.weightChartInst = new Chart(canvas.getContext('2d'), {
-    type: 'line',
-    data: { labels, datasets: [{ label: 'Peso (kg)', data, borderColor: 'var(--emerald-500)', backgroundColor: 'rgba(16,185,129,.1)', borderWidth: 2.5, pointBackgroundColor: 'var(--emerald-500)', pointBorderColor: 'white', pointBorderWidth: 2, pointRadius: 5, fill: true, tension: .4 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} kg` } } }, scales: { y: { grid: { color: 'rgba(0,0,0,.04)' }, ticks: { font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+  /* P0: creación resiliente (CDN async) */
+  const wcfg = { labels, data, canvas };
+  ensureChartOnce('weight', () => {
+    if (App.weightChartInst) return;
+    App.weightChartInst = new Chart(wcfg.canvas.getContext('2d'), {
+      type: 'line',
+      data: { labels: wcfg.labels, datasets: [{ label: 'Peso (kg)', data: wcfg.data, borderColor: 'var(--emerald-500)', backgroundColor: 'rgba(16,185,129,.1)', borderWidth: 2.5, pointBackgroundColor: 'var(--emerald-500)', pointBorderColor: 'white', pointBorderWidth: 2, pointRadius: 5, fill: true, tension: .4 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} kg` } } }, scales: { y: { grid: { color: 'rgba(0,0,0,.04)' }, ticks: { font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+    });
   });
 }
 export function loadAndRenderCaloriesChart() {
@@ -1599,15 +1727,20 @@ export function loadAndRenderCaloriesChart() {
     App.caloriesChartInst.update('none');
     return;
   }
-  App.caloriesChartInst = new Chart(canvas.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels, datasets: [
-        { label: 'Consumido', data: consumed, backgroundColor: consumed.map(v => v > dailyGoal ? 'rgba(239,68,68,.7)' : 'rgba(16,185,129,.7)'), borderRadius: 8, borderSkipped: false },
-        { label: 'Meta', data: goalLine, type: 'line', borderColor: 'rgba(245,158,11,.8)', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom', labels: { font: { size: 11 }, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} kcal` } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+  /* P0: creación resiliente (CDN async) */
+  const ccfg = { labels, consumed, goalLine, dailyGoal, canvas };
+  ensureChartOnce('calories', () => {
+    if (App.caloriesChartInst) return;
+    App.caloriesChartInst = new Chart(ccfg.canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ccfg.labels, datasets: [
+          { label: 'Consumido', data: ccfg.consumed, backgroundColor: ccfg.consumed.map(v => v > ccfg.dailyGoal ? 'rgba(239,68,68,.7)' : 'rgba(16,185,129,.7)'), borderRadius: 8, borderSkipped: false },
+          { label: 'Meta', data: ccfg.goalLine, type: 'line', borderColor: 'rgba(245,158,11,.8)', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom', labels: { font: { size: 11 }, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} kcal` } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { font: { size: 11 } } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } } }
+    });
   });
 }
 export async function logWeight() {
@@ -2335,6 +2468,7 @@ export function toggleFavorite(food) {
     // Ya existe → eliminar por nombre normalizado (consistente en toda la app)
     favs.splice(existingIdx, 1);
     LS.set('favorites', favs);
+    _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
     showToast('Eliminado de favoritos', 'info');
   } else {
     // No existe → agregar con datos completos
@@ -2353,6 +2487,7 @@ export function toggleFavorite(food) {
       savedAt:   Date.now(),   // metadato para debug/ordenación futura
     });
     LS.set('favorites', favs);
+    _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
     showToast('¡Guardado en favoritos!', 'success');
   }
 }

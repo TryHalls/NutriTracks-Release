@@ -83,16 +83,21 @@ export function levenshteinDistance(a, b) {
   const m = a.length, n = b.length;
   if (m === 0) return n;
   if (n === 0) return m;
-  const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  /* P0 Optimización: DP de 2 filas (antes asignaba una matriz (m+1)×(n+1)
+     por comparación; en el análisis IA eran miles de matrices por llamada). */
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
   for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    const ai = a.charCodeAt(i - 1);
     for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      const cost = ai === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
     }
+    const tmp = prev; prev = curr; curr = tmp;
   }
-  return dp[m][n];
+  return prev[n];
 }
 
 /**
@@ -120,20 +125,34 @@ export function normalizeSearchText(text) {
     .trim();
 }
 
+/* ── P0 Optimización: reglas de sinónimos PRECOMPILADAS una sola vez al cargar.
+   Antes se reordenaban y se compilaban ~228 regex en CADA llamada (cada búsqueda
+   y cada análisis IA). Ahora la normalización y compilación ocurre 1 única vez. ── */
+const _SYNONYM_RULES = (() => {
+  const rules = [];
+  for (const [synonym, standard] of Object.entries(SYNONYMS_MAP)) {
+    const normSyn = normalizeSearchText(synonym);
+    const normStd = normalizeSearchText(standard);
+    if (!normSyn || !normStd || normSyn === normStd) continue;
+    rules.push({
+      len: synonym.length,
+      rx: new RegExp(`\\b${escapeRegExp(normSyn)}\\b`, 'g'),
+      std: normStd,
+    });
+  }
+  /* Ordenamos por longitud desc para que términos largos tengan prioridad */
+  return rules.sort((a, b) => b.len - a.len);
+})();
+
 /**
  * Aplica el mapa de sinónimos para estandarizar términos regionales.
  * Retorna el texto con los sinónimos reemplazados.
  */
 export function applySynonyms(text) {
   let result = text;
-  // Ordenamos por longitud desc para que términos largos tengan prioridad
-  const entries = Object.entries(SYNONYMS_MAP).sort((a, b) => b[0].length - a[0].length);
-  for (const [synonym, standard] of entries) {
-    const normSyn = normalizeSearchText(synonym);
-    const normStd = normalizeSearchText(standard);
-    if (result.includes(normSyn)) {
-      result = result.replace(new RegExp(`\\b${escapeRegExp(normSyn)}\\b`, 'g'), normStd);
-    }
+  for (let i = 0; i < _SYNONYM_RULES.length; i++) {
+    const rule = _SYNONYM_RULES[i];
+    if (result.search(rule.rx) !== -1) result = result.replace(rule.rx, rule.std);
   }
   return result;
 }
@@ -247,8 +266,16 @@ export function convertEstimate(food, quantityRaw, unitRaw) {
   return { grams: Math.max(1, Math.round(grams)), label };
 }
 
+/* P0 Optimización: aliases normalizados cacheados por alimento (la base es
+   estática, no hace falta re-normalizar nombres+aliases en cada búsqueda/análisis). */
+const _aliasCache = new WeakMap();
 export function getFoodAliases(food) {
-  return Array.from(new Set([food.name, ...(food.aliases || [])].map(normalizeSearchText).filter(Boolean)));
+  if (!food || typeof food !== 'object') return [];
+  let cached = _aliasCache.get(food);
+  if (cached) return cached;
+  cached = Array.from(new Set([food.name, ...(food.aliases || [])].map(normalizeSearchText).filter(Boolean)));
+  _aliasCache.set(food, cached);
+  return cached;
 }
 
 export function estimateFoodPortion(normalizedText, food, totalMatches = 1) {
@@ -288,6 +315,25 @@ export function buildAIFoodFromLocalFood(food, estimate) {
   };
 }
 
+/* ── P0 Optimización: índice de aliases PRECOMPILADO una sola vez al cargar.
+   Antes se compilaba un RegExp por alias por alimento en CADA llamada
+   (≈90 alimentos × aliases) y se re-normalizaban los alias en bucles anidados. ── */
+const _FOOD_ALIAS_INDEX = (() => {
+  const list = [];
+  LOCAL_FOOD_DB.forEach(food => {
+    getFoodAliases(food).forEach(alias => {
+      const ap = alias.split(' ').map(escapeRegExp).join('\\s+');
+      list.push({
+        food,
+        alias,
+        len: alias.length,
+        rx: new RegExp(`(?:^|\\b)${ap}(?=\\b|$)`, 'g'),
+      });
+    });
+  });
+  return list.sort((a, b) => b.len - a.len);
+})();
+
 /**
  * Busca menciones de alimentos en el texto con:
  *   1. Exact / substring match
@@ -300,38 +346,52 @@ export function findLocalFoodMentions(text) {
   if (!normalized) return [];
 
   const candidates = [];
+  const tokens = normalized.split(' ').filter(t => t.length > 3);
+  const matchedTokens = new Set();
 
-  LOCAL_FOOD_DB.forEach(food => {
-    getFoodAliases(food).forEach(alias => {
-      // --- Match exacto / substring ---
-      const ap = alias.split(' ').map(escapeRegExp).join('\\s+');
-      const rx = new RegExp(`(?:^|\\b)${ap}(?=\\b|$)`, 'g');
-      let match;
-      while ((match = rx.exec(normalized))) {
-        candidates.push({ food, alias, start: match.index, end: match.index + match[0].length, len: alias.length, score: 1.0 });
-      }
-    });
+  // 1. Match exacto / substring con regex precompiladas
+  for (let i = 0; i < _FOOD_ALIAS_INDEX.length; i++) {
+    const entry = _FOOD_ALIAS_INDEX[i];
+    entry.rx.lastIndex = 0;
+    let match;
+    while ((match = entry.rx.exec(normalized))) {
+      candidates.push({
+        food: entry.food, alias: entry.alias,
+        start: match.index, end: match.index + match[0].length,
+        len: entry.len, score: 1.0,
+      });
+      matchedTokens.add(entry.alias);
+    }
+  }
 
-    // --- Fuzzy matching: dividir texto en tokens y comparar con alias ---
-    const tokens = normalized.split(' ').filter(t => t.length > 3);
-    tokens.forEach((token, idx) => {
-      getFoodAliases(food).forEach(alias => {
-        // Solo considerar alias de 1 palabra para fuzzy individual
-        if (alias.includes(' ')) return;
-        const sim = fuzzyScore(token, alias);
-        if (sim > 0.75 && sim < 1.0) { // < 1.0 para no duplicar exactos
-          // Calcular posición aproximada
-          const pos = normalized.indexOf(token);
-          if (pos >= 0) {
-            candidates.push({
-              food, alias: token, start: pos, end: pos + token.length,
-              len: alias.length, score: sim
-            });
+  // 2. Fuzzy matching: solo para tokens que no coincidieron exactamente
+  if (tokens.length) {
+    for (let fi = 0; fi < LOCAL_FOOD_DB.length; fi++) {
+      const food = LOCAL_FOOD_DB[fi];
+      const aliases = getFoodAliases(food); // cacheado (WeakMap)
+      for (let ti = 0; ti < tokens.length; ti++) {
+        const token = tokens[ti];
+        if (matchedTokens.has(token)) continue;
+        for (let ai = 0; ai < aliases.length; ai++) {
+          const alias = aliases[ai];
+          // Solo considerar alias de 1 palabra para fuzzy individual
+          if (alias.includes(' ')) continue;
+          const sim = fuzzyScore(token, alias);
+          if (sim > 0.75 && sim < 1.0) { // < 1.0 para no duplicar exactos
+            const pos = normalized.indexOf(token);
+            if (pos >= 0) {
+              candidates.push({
+                food, alias: token, start: pos, end: pos + token.length,
+                len: alias.length, score: sim,
+              });
+              matchedTokens.add(token);
+              break; // 1 candidato fuzzy por (token, alimento)
+            }
           }
         }
-      });
-    });
-  });
+      }
+    }
+  }
 
   // Ordenar: mayor longitud de alias primero, luego mayor score
   candidates.sort((a, b) => b.len - a.len || b.score - a.score || a.start - b.start);

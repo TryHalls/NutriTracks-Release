@@ -61,7 +61,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   /* Botón de refresh del AI Coach Insight */
   const aiRefreshBtn = document.querySelector('.ai-insight-refresh');
-  if (aiRefreshBtn) aiRefreshBtn.addEventListener('click', () => UI.refreshAIInsight());
+  /* force=true: el botón manual siempre reconsulta (el insight automático se cachea por día+totales) */
+  if (aiRefreshBtn) aiRefreshBtn.addEventListener('click', () => UI.refreshAIInsight(true));
 
   /* Botón principal "Analizar con IA" */
   const analyzeBtn = document.getElementById('btn-ai-analyze');
