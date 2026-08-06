@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   UI.setupEditFoodListeners();
   UI.renderAIImagePreview();
   UI.initScannerEvents();
+  UI.initSwipeNavigation();
 
   /* ── Resize event listener for charts ── */
   let resizeTimer;

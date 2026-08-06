@@ -48,10 +48,18 @@ export function setGreeting() {
   if (el) el.textContent = `${Utils.greetingByHour()}, ${firstName}`;
   if (elDate) elDate.textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 }
-export function navigateTo(page) {
+export function navigateTo(page, dir = 0) {
   const current = document.querySelector('.page.active');
   const target = document.getElementById(`page-${page}`);
   if (!target || current === target) return;
+
+  // Dirección automática según el orden de las páginas (para las animaciones)
+  const order = ['home', 'diary', 'water', 'progress', 'profile'];
+  if (!dir) {
+    const curIdx = current ? order.indexOf(current.id.replace('page-', '')) : -1;
+    const nextIdx = order.indexOf(page);
+    dir = (curIdx !== -1 && nextIdx !== -1) ? Math.sign(nextIdx - curIdx) : 1;
+  }
 
   // Activar will-change en ambas páginas antes de la transición
   target.style.willChange = 'opacity, transform';
@@ -60,11 +68,21 @@ export function navigateTo(page) {
   current?.classList.remove('active');
   target.classList.add('active');
 
-  // Limpiar will-change después de la transición (300ms)
+  // Animación direccional de entrada + aparición escalonada del contenido
+  target.classList.remove('enter-from-left', 'enter-from-right', 'page-anim');
+  void target.offsetWidth; /* reiniciar animaciones */
+  target.classList.add(dir >= 0 ? 'enter-from-right' : 'enter-from-left', 'page-anim');
+
+  // Limpiar will-change y clases temporales después de la transición
+  // (enter-from-* termina a los ~0.32s; el stagger de page-anim puede llegar hasta ~0.72s)
   setTimeout(() => {
     target.style.willChange = 'auto';
     if (current) current.style.willChange = 'auto';
-  }, 300);
+    target.classList.remove('enter-from-left', 'enter-from-right');
+  }, 420);
+  setTimeout(() => {
+    target.classList.remove('page-anim');
+  }, 820);
 
   App.currentPage = page; /* P2: fijar la página activa para refrescos post-guardado */
 
@@ -2383,4 +2401,135 @@ export function toggleDarkMode() {
   const isDark = !document.body.classList.contains('dark-theme');
   document.body.classList.toggle('dark-theme', isDark);
   LS.set('dark_mode', isDark);
+}
+
+/* ══════════════════════════════════════════════
+   GESTOS: deslizar izq/der para cambiar de sección
+   ══════════════════════════════════════════════ */
+const SWIPE_PAGE_ORDER = ['home', 'diary', 'water', 'progress', 'profile'];
+
+let _swipe = {
+  active: false,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  dx: 0,
+  page: null,
+  navLocked: false,
+  suppressClickUntil: 0,
+};
+
+function swipeBlocked(target) {
+  // No interferir con modales, scanner, onboarding ni la barra de navegación
+  if (_swipe.navLocked) return true;
+  if (document.querySelector('.modal-overlay.open')) return true;
+  const scanner = document.getElementById('scanner-container');
+  if (scanner && getComputedStyle(scanner).display !== 'none') return true;
+  const onboarding = document.getElementById('onboarding-screen');
+  if (onboarding && !onboarding.classList.contains('hidden')) return true;
+  if (target) {
+    const t = target.closest('.bottom-nav, .modal-overlay, .modal-sheet, input, textarea, select, .nav-item');
+    if (t) return true;
+  }
+  return false;
+}
+
+export function initSwipeNavigation() {
+  const app = document.getElementById('app');
+  if (!app || app.dataset.swipeReady) return;
+  app.dataset.swipeReady = '1';
+
+  app.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (swipeBlocked(e.target)) return;
+    if (_swipe.active) return; /* ignora segundos dedos */
+    _swipe.active = true;
+    _swipe.pointerId = e.pointerId;
+    _swipe.startX = e.clientX;
+    _swipe.startY = e.clientY;
+    _swipe.dx = 0;
+    _swipe.page = document.querySelector('.page.active');
+  }, { passive: true });
+
+  app.addEventListener('pointermove', (e) => {
+    if (!_swipe.active || !_swipe.page || e.pointerId !== _swipe.pointerId) return;
+    const dx = e.clientX - _swipe.startX;
+    const dy = e.clientY - _swipe.startY;
+    // Solo gesto horizontal claro (no romper el scroll vertical)
+    if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.2) {
+      if (Math.abs(dy) > 12) _swipe.active = false; /* scroll vertical: cancela */
+      return;
+    }
+    _swipe.dx = dx;
+    _swipe.page.style.transition = 'none';
+    _swipe.page.style.transform = `translateX(${dx}px)`;
+    _swipe.page.style.opacity = String(Math.max(0.45, 1 - Math.abs(dx) / 600));
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  const finish = (e) => {
+    if (!_swipe.active || e.pointerId !== _swipe.pointerId) return;
+    _swipe.active = false;
+    const dx = _swipe.dx;
+    const page = _swipe.page;
+    if (!page) return;
+
+    const width = window.innerWidth || 400;
+    const threshold = Math.max(70, width * 0.18);
+    const idx = SWIPE_PAGE_ORDER.indexOf(App.currentPage);
+    const navigated = Math.abs(dx) >= threshold && idx !== -1;
+    const dir = dx < 0 ? 1 : -1;
+    const nextPage = navigated ? SWIPE_PAGE_ORDER[idx + dir] : null;
+
+    if (navigated && nextPage) {
+      // La página sale volando en la dirección del gesto, la nueva entra al lado
+      page.style.transition = 'transform .28s cubic-bezier(.22, 1, .36, 1), opacity .28s ease';
+      page.style.transform = `translateX(${dir * -1 * width * 0.9}px)`;
+      page.style.opacity = '0';
+      _swipe.suppressClickUntil = Date.now() + 400;
+      _swipe.navLocked = true;
+      setTimeout(() => { _swipe.navLocked = false; }, 500);
+      navigateTo(nextPage, dir);
+      // Limpiar estilos inline residuales tras la transición
+      setTimeout(() => {
+        page.style.transition = '';
+        page.style.transform = '';
+        page.style.opacity = '';
+      }, 450);
+    } else {
+      // No llegó al umbral: rebote elástico a la posición original
+      page.style.transition = 'transform .3s cubic-bezier(.22, 1, .36, 1), opacity .3s ease';
+      page.style.transform = '';
+      page.style.opacity = '';
+      setTimeout(() => {
+        page.style.transition = '';
+      }, 350);
+    }
+    _swipe.page = null;
+  };
+
+  app.addEventListener('pointerup', finish);
+  app.addEventListener('pointercancel', finish);
+  app.addEventListener('pointerleave', finish);
+
+  /* Suprime el click fantasma que sigue a un swipe completado (evita expandir un alimento sin querer) */
+  app.addEventListener('click', (e) => {
+    if (Date.now() < _swipe.suppressClickUntil) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  /* Atajos de teclado: flechas izquierda/derecha */
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (swipeBlocked(null)) return;
+    const idx = SWIPE_PAGE_ORDER.indexOf(App.currentPage);
+    if (idx === -1) return;
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    const nextPage = SWIPE_PAGE_ORDER[idx + dir];
+    if (nextPage) navigateTo(nextPage, dir);
+  });
 }
