@@ -172,6 +172,10 @@ export function injectWaterPage() {
   wp.id = 'page-water';
   wp.innerHTML = `
     <div class="water-hero">
+      <span class="water-bubble b1"></span>
+      <span class="water-bubble b2"></span>
+      <span class="water-bubble b3"></span>
+      <span class="water-bubble b4"></span>
       <div class="water-progress-circle">
         <svg width="140" height="140" viewBox="0 0 140 140">
           <circle cx="70" cy="70" r="58" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="10"/>
@@ -182,6 +186,7 @@ export function injectWaterPage() {
         <div class="water-circle-text" style="color:white">
           <div class="water-glasses-big" id="wp-glasses">0</div>
           <div class="water-of">vasos</div>
+          <div class="water-pct" id="wp-pct">0%</div>
         </div>
       </div>
       <div class="water-hero-title" id="wp-title">¡Hidrátate!</div>
@@ -1381,6 +1386,13 @@ export function loadTodayWater() {
   const todayStr = Utils.toDateStr(new Date());
   App.todayWater = LS.get('water_' + todayStr, 0);
 }
+/* Pop táctil del vaso — reinicia la animación en re-toques rápidos */
+function popGlass(btn) {
+  btn.classList.remove('tapped');
+  void btn.offsetWidth; /* reflow: reinicia la animación aunque ya estuviera activa */
+  btn.classList.add('tapped');
+  setTimeout(() => btn.classList.remove('tapped'), 500);
+}
 export function renderDashboardWater(forceRebuild = false) {
   const goal = App.user?.water_goal || 8;
   const current = App.todayWater || 0;
@@ -1388,6 +1400,8 @@ export function renderDashboardWater(forceRebuild = false) {
   const goalEl = document.getElementById('dash-water-goal');
   if (countEl) countEl.textContent = current;
   if (goalEl) goalEl.textContent = goal;
+  const bar = document.getElementById('dash-water-bar');
+  if (bar) bar.style.width = Math.min(100, (current / goal) * 100) + '%';
   const container = document.getElementById('dash-water-glasses');
   if (!container) return;
   const needsRebuild = forceRebuild || container.children.length !== goal;
@@ -1401,7 +1415,7 @@ export function renderDashboardWater(forceRebuild = false) {
       icon.setAttribute('data-lucide', 'droplets');
       btn.appendChild(icon);
       btn.title = `Vaso ${i + 1}`;
-      btn.onclick = () => quickSetWater(i + 1);
+      btn.onclick = () => { popGlass(btn); quickSetWater(i + 1); };
       fragment.appendChild(btn);
     }
     container.appendChild(fragment);
@@ -1412,10 +1426,12 @@ export function renderDashboardWater(forceRebuild = false) {
   });
 }
 export async function quickSetWater(glasses) {
+  const goal = App.user?.water_goal || 8;
   App.todayWater = glasses;
   LS.set('water_' + Utils.toDateStr(new Date()), glasses);
   renderDashboardWater();
-  showToast(`${glasses} vasos registrados`, 'info');
+  if (glasses >= goal) showToast('¡Meta de hidratación alcanzada! 🎉', 'success');
+  else showToast(`${glasses} vasos registrados`, 'info');
 }
 export async function refreshDiary() {
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
@@ -1565,6 +1581,10 @@ export async function refreshWaterPage() {
   const current = App.todayWater || 0;
 
   updateWaterProgressArc(current, goal);
+  const pctEl = document.getElementById('wp-pct');
+  if (pctEl) pctEl.textContent = Math.round((current / goal) * 100) + '%';
+  const hero = document.querySelector('.water-hero');
+  if (hero) hero.classList.toggle('goal-reached', current >= goal && current > 0);
   const wpGlasses = document.getElementById('wp-glasses');
   if (wpGlasses) wpGlasses.textContent = current;
   const wpTitle = document.getElementById('wp-title');
@@ -1601,7 +1621,7 @@ export function renderBigGlassGrid(current, goal) {
       icon.setAttribute('data-lucide', 'droplets');
       btn.appendChild(icon);
       btn.title = `Vaso ${i + 1}`;
-      btn.onclick = () => setWaterTo(i + 1);
+      btn.onclick = () => { popGlass(btn); setWaterTo(i + 1); };
       fragment.appendChild(btn);
     }
     grid.appendChild(fragment);
@@ -1630,11 +1650,13 @@ export async function removeWater() {
   showToast(`Vaso removido → ${App.todayWater}`, 'info');
 }
 export async function setWaterTo(count) {
+  const goal = App.user?.water_goal || 8;
   App.todayWater = count;
   LS.set('water_' + Utils.toDateStr(new Date()), count);
   refreshWaterPage();
   renderDashboardWater();
-  showToast(`${count} vasos registrados`, 'info');
+  if (count >= goal) showToast('¡Meta de hidratación alcanzada! 🎉', 'success');
+  else showToast(`${count} vasos registrados`, 'info');
 }
 export function renderWaterChart() {
   const canvas = document.getElementById('water-chart');

@@ -226,7 +226,7 @@ body:not(.dark-theme) .si-icon {
 .goal-card:active,
 .btn-scan-product:active,
 .nav-item:active,
-.glass-btn:active {
+.glass-btn:active:not(.tapped) {
   transform: scale(0.95) !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, .08) !important;
 }
@@ -1263,25 +1263,66 @@ ul {
 }
 
 .glass-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   border: 1.5px solid var(--gray-200);
   background: var(--white);
-  font-size: 1.1rem;
   display: grid;
   place-items: center;
-  transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  overflow: hidden;
   cursor: pointer;
+  transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+
+/* Relleno líquido: sube desde abajo al llenarse */
+.glass-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  transform: scaleY(0);
+  transform-origin: 50% 100%;
+  transition: transform .35s cubic-bezier(.22, 1, .36, 1);
+}
+
+.glass-btn [data-lucide] {
+  position: relative;
+  z-index: 1;
+  width: 19px;
+  height: 19px;
+  stroke: #3b82f6;
+  transition: stroke .25s ease;
 }
 
 .glass-btn.filled {
-  background: #eff6ff;
-  border-color: #93c5fd;
+  border-color: #60a5fa;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, .35);
+}
+
+.glass-btn.filled::before {
+  transform: scaleY(1);
+}
+
+.glass-btn.filled [data-lucide] {
+  stroke: #fff;
+}
+
+.glass-btn.tapped {
+  animation: glass-pop .5s cubic-bezier(.34, 1.56, .64, 1);
 }
 
 .glass-btn:hover {
   transform: scale(1.1);
+}
+
+@keyframes glass-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.22); }
+  70% { transform: scale(.94); }
+  100% { transform: scale(1); }
 }
 
 /* ============================================================
@@ -3006,21 +3047,55 @@ body.dark-theme .btn-quick-rem:hover {
 }
 
 .big-glass-btn {
+  position: relative;
   aspect-ratio: 1;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px solid var(--gray-200);
   background: var(--white);
-  font-size: 1.8rem;
   display: grid;
   place-items: center;
-  transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  overflow: hidden;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
+  transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+
+/* Relleno líquido animado (misma lógica que los vasos del home) */
+.big-glass-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  transform: scaleY(0);
+  transform-origin: 50% 100%;
+  transition: transform .4s cubic-bezier(.22, 1, .36, 1);
+}
+
+.big-glass-btn [data-lucide] {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  stroke: #3b82f6;
+  transition: stroke .25s ease;
 }
 
 .big-glass-btn.filled {
-  background: #eff6ff;
-  border-color: #93c5fd;
+  border-color: #60a5fa;
+  box-shadow: 0 6px 18px rgba(59, 130, 246, .4);
+}
+
+.big-glass-btn.filled::before {
+  transform: scaleY(1);
+}
+
+.big-glass-btn.filled [data-lucide] {
+  stroke: #fff;
+}
+
+.big-glass-btn.tapped {
+  animation: glass-pop .5s cubic-bezier(.34, 1.56, .64, 1);
 }
 
 .big-glass-btn:hover {
@@ -5093,4 +5168,139 @@ body.dark-theme .toast.ai { background: linear-gradient(135deg, var(--ai-from), 
 /* ── Fix revisor: título del Chef IA visible en dark (--white invertida) ── */
 body.dark-theme .btn-chef-ai .chef-title {
   color: #ffffff;
+}
+
+/* ════════════════════════════════════════════════
+   SISTEMA DE AGUA MEJORADO
+   ════════════════════════════════════════════════ */
+
+/* ── Barra de progreso del widget de agua (home) ── */
+.water-widget-bar {
+  margin-top: 12px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gray-100);
+  overflow: hidden;
+}
+
+.water-widget-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, .5);
+  transition: width .5s cubic-bezier(.22, 1, .36, 1);
+}
+
+body.dark-theme .water-widget-bar {
+  background: rgba(255, 255, 255, .08);
+}
+
+/* ── Hero de la página de agua: burbujas, % y celebración ── */
+.water-hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.water-pct {
+  margin-top: 3px;
+  font-size: .8rem;
+  font-weight: 700;
+  color: #bfdbfe;
+  letter-spacing: .3px;
+}
+
+.water-bubble {
+  position: absolute;
+  bottom: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .6), rgba(255, 255, 255, .1));
+  animation: bubble-rise 5.5s ease-in infinite;
+  pointer-events: none;
+}
+
+.water-bubble.b1 { left: 10%; width: 10px; height: 10px; animation-delay: 0s; }
+.water-bubble.b2 { left: 38%; width: 6px; height: 6px; animation-delay: 1.6s; animation-duration: 6.5s; }
+.water-bubble.b3 { left: 66%; width: 14px; height: 14px; animation-delay: .8s; animation-duration: 7s; }
+.water-bubble.b4 { left: 88%; width: 7px; height: 7px; animation-delay: 2.4s; animation-duration: 5.8s; }
+
+@keyframes bubble-rise {
+  0% { transform: translateY(0) scale(.6); opacity: 0; }
+  14% { opacity: .85; }
+  100% { transform: translateY(-230px) scale(1.05); opacity: 0; }
+}
+
+/* Meta alcanzada: el anillo se pone verde y pulsa */
+.water-hero.goal-reached .water-progress-circle {
+  animation: hero-goal-pulse 1.6s ease-in-out infinite;
+}
+
+.water-hero.goal-reached #water-progress-arc {
+  stroke: #6ee7b7;
+  transition: stroke .4s ease;
+}
+
+.water-hero.goal-reached .water-pct {
+  color: #a7f3d0;
+}
+
+@keyframes hero-goal-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 16px rgba(255, 255, 255, .35)); }
+}
+
+/* ── Botón + de la barra superior: feedback táctil ── */
+.topbar-action {
+  transition: background var(--transition), transform .2s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+
+.topbar-action:hover {
+  background: var(--emerald-100);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, .25);
+}
+
+.topbar-action:active {
+  transform: scale(.88);
+}
+
+/* ── Dark theme: vasos llenos del home y hero ── */
+body.dark-theme .glass-btn.filled {
+  border-color: #60a5fa;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, .4);
+}
+
+body.dark-theme .glass-btn [data-lucide] {
+  stroke: #93c5fd;
+}
+
+body.dark-theme .glass-btn.filled [data-lucide] {
+  stroke: #fff;
+}
+
+body.dark-theme .big-glass-btn.filled {
+  border-color: #60a5fa;
+  box-shadow: 0 6px 18px rgba(59, 130, 246, .45);
+}
+
+body.dark-theme .big-glass-btn.filled [data-lucide] {
+  stroke: #fff;
+}
+
+/* ── Accesibilidad: sin movimiento ── */
+@media (prefers-reduced-motion: reduce) {
+  .glass-btn.tapped,
+  .big-glass-btn.tapped {
+    animation: none !important;
+  }
+  .water-bubble {
+    animation: none !important;
+    opacity: 0;
+  }
+  .water-hero.goal-reached .water-progress-circle {
+    animation: none !important;
+  }
+  .water-widget-bar-fill {
+    transition: none;
+  }
 }

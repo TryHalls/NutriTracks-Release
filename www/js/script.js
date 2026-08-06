@@ -212,6 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById("food-modal").addEventListener("click", function(event) { closeFoodModal(event); });
   document.getElementById("evt_8a2f8d").addEventListener("click", function() { confirmAddFood(); });
   document.getElementById("evt_38b83e").addEventListener("click", function() { quickAddCalories(); });
+  /* Botón + de la barra superior: abre la búsqueda de alimentos para el último tipo de comida usado */
+  document.getElementById("topbar-action-btn").addEventListener("click", function() { openAddFood(null, App.currentMealType || 'breakfast'); });
   document.getElementById("ai-edit-modal").addEventListener("click", function(event) { closeAIFoodEditModal(event); });
   document.getElementById("evt_6c04ab").addEventListener("click", function(event) { event.stopPropagation(); });
   document.getElementById("evt_2d34ac").addEventListener("click", function() { closeAIFoodEditModal(); });
