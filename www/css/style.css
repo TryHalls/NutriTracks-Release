@@ -4855,3 +4855,242 @@ body.dark-theme .scanner-conf-macros .mac-item strong {
   width: 100% !important;
   height: 100% !important;
 }
+
+/* ════════════════════════════════════════════════════════════
+   DARK THEME — FIXES DE SECCIONES QUE QUEDABAN EN CLARO
+   (variables --white/--gray-8xx invertidas o fondos hardcodeados)
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Texto blanco obligatorio sobre gradientes de color (--white se volvía oscuro) ── */
+body.dark-theme .calories-card,
+body.dark-theme .calories-card .cal-stat-label,
+body.dark-theme .calories-card .cal-stat-value,
+body.dark-theme .calories-card .cal-stat-unit,
+body.dark-theme .water-hero,
+body.dark-theme .water-hero-title,
+body.dark-theme .water-hero-sub,
+body.dark-theme .water-glasses-big,
+body.dark-theme .water-of,
+body.dark-theme .results-card,
+body.dark-theme .btn-primary,
+body.dark-theme .btn-water-add,
+body.dark-theme .btn-log-weight,
+body.dark-theme .sri-add-btn,
+body.dark-theme .btn-quick-add,
+body.dark-theme .btn-confirm-add,
+body.dark-theme .btn-ai-confirm {
+  color: #ffffff !important;
+}
+
+/* ── Modal de edición IA (ai-edit): fondos blancos hardcodeados → oscuros ── */
+body.dark-theme .ai-edit-sheet {
+  background: rgba(17, 24, 39, .92);
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+body.dark-theme .ai-edit-header {
+  background: linear-gradient(135deg, rgba(99, 102, 241, .14), rgba(16, 185, 129, .12));
+}
+body.dark-theme .ai-edit-chip {
+  background: rgba(31, 41, 55, .9);
+  border-color: rgba(255, 255, 255, .14);
+  color: #d1d5db;
+}
+body.dark-theme .ai-edit-chip.active {
+  border-color: var(--emerald-400);
+  background: rgba(16, 185, 129, .14);
+  color: #6ee7b7;
+}
+body.dark-theme .ai-edit-summary {
+  background: rgba(31, 41, 55, .92);
+  border-color: #4b5563;
+}
+body.dark-theme .ai-edit-note {
+  background: linear-gradient(135deg, rgba(99, 102, 241, .12), rgba(16, 185, 129, .10));
+  border-color: rgba(99, 102, 241, .3);
+  color: #cbd5e1;
+}
+body.dark-theme .ai-edit-footer {
+  background: rgba(17, 24, 39, .95);
+  border-top-color: rgba(255, 255, 255, .1);
+}
+body.dark-theme .ai-edit-position,
+body.dark-theme .ai-edit-subtitle {
+  color: #9ca3af;
+}
+
+/* ── Botones de edición/eliminación de alimentos (fondos claros) ── */
+body.dark-theme .btn-edit-fav {
+  background: #1f2937;
+  border-color: #4b5563;
+}
+body.dark-theme .btn-edit-delete {
+  background: rgba(239, 68, 68, .14);
+  border-color: rgba(239, 68, 68, .4);
+  color: #fca5a5;
+}
+body.dark-theme .btn-edit-delete:hover {
+  background: rgba(239, 68, 68, .24) !important;
+  border-color: rgba(239, 68, 68, .55) !important;
+  color: #fecaca !important;
+}
+body.dark-theme .edit-food-extra {
+  background: #111827;
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+/* ── Toast: --gray-900 se volvía blanco → forzar fondo oscuro ── */
+body.dark-theme .toast {
+  background: #1f2937;
+  color: #f9fafb;
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+body.dark-theme .toast.success,
+body.dark-theme .toast.error,
+body.dark-theme .toast.info,
+body.dark-theme .toast.ai {
+  border-color: rgba(255, 255, 255, .18);
+}
+
+/* ── Confirmación del escáner (quedaba casi blanca) ── */
+body.dark-theme .scanner-confirmation {
+  background: #1f2937;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, .4);
+}
+body.dark-theme .scanner-conf-name {
+  color: #f9fafb;
+}
+body.dark-theme .scanner-conf-macros .mac-item {
+  background: #374151;
+}
+body.dark-theme .scanner-conf-macros .mac-item span {
+  color: #9ca3af;
+}
+body.dark-theme .scanner-conf-macros .mac-item strong {
+  color: #f9fafb;
+}
+
+/* ── Scanner "no encontrado" (fondo rosa claro) ── */
+body.dark-theme .scanner-not-found {
+  background: rgba(127, 29, 29, .25);
+}
+body.dark-theme .scanner-not-found .empty-icon {
+  background: rgba(239, 68, 68, .2);
+  color: #fca5a5;
+}
+body.dark-theme .scanner-not-found p {
+  color: #fecaca;
+}
+
+/* ── Entrada IA del Diario (micrófono y preview de imagen) ── */
+body.dark-theme .ai-mic-btn {
+  background: rgba(31, 41, 55, .8);
+  border-color: rgba(99, 102, 241, .3);
+  color: #a5b4fc;
+}
+body.dark-theme .ai-image-preview {
+  background: linear-gradient(135deg, rgba(16, 185, 129, .14), rgba(31, 41, 55, .85));
+  border-color: rgba(16, 185, 129, .3);
+}
+
+/* ── Selector de comida (meal-selector-ui) y búsqueda ── */
+body.dark-theme #meal-selector-ui {
+  background: #1f2937;
+  border-top-color: #4b5563 !important;
+}
+body.dark-theme .search-source-badge {
+  background: #1f2937;
+  border-color: #374151;
+  color: #6ee7b7;
+}
+body.dark-theme .ai-meal-pill {
+  background: #1f2937;
+  color: #cbd5e1;
+}
+
+/* ── Tarjetas glass que dependían de --white para el fondo ── */
+body.dark-theme .glass-btn,
+body.dark-theme .date-nav-btn,
+body.dark-theme .macro-card,
+body.dark-theme .meal-mini-card,
+body.dark-theme .water-widget,
+body.dark-theme .chart-card,
+body.dark-theme .profile-stat-card,
+body.dark-theme .meal-section,
+body.dark-theme .step-card {
+  background: rgba(31, 41, 55, .75);
+  border-color: rgba(255, 255, 255, .1);
+}
+
+/* ── AI results (resultados del análisis) ── */
+body.dark-theme .ai-result-item {
+  border-bottom-color: #374151;
+}
+body.dark-theme .ai-result-name,
+body.dark-theme .ai-result-cal {
+  color: #e2e8f0;
+}
+
+/* ── Chef IA pills (fondos pastel → oscuros) ── */
+body.dark-theme .chef-macro-pill.cal {
+  background: rgba(180, 83, 9, .25);
+  color: #fbbf24;
+}
+body.dark-theme .chef-macro-pill.pro {
+  background: rgba(67, 56, 202, .3);
+  color: #c7d2fe;
+}
+body.dark-theme .chef-macro-pill.car {
+  background: rgba(4, 120, 87, .25);
+  color: #6ee7b7;
+}
+body.dark-theme .chef-macro-pill.fat {
+  background: rgba(185, 28, 28, .25);
+  color: #fca5a5;
+}
+
+/* ── Onboarding: mantener blanco pese a --white invertida ── */
+body.dark-theme .onboarding-header {
+  color: #ffffff;
+}
+
+/* ── Botones de quitar favorito rápido (usaban --gray-800 = casi blanco) ── */
+body.dark-theme .btn-quick-rem {
+  background: rgba(239, 68, 68, .14);
+  border-color: rgba(239, 68, 68, .4);
+  color: #fca5a5;
+}
+body.dark-theme .btn-quick-rem:hover {
+  background: rgba(239, 68, 68, .24) !important;
+  border-color: rgba(239, 68, 68, .55) !important;
+  color: #fecaca !important;
+}
+
+/* ── Botones de vaso de agua (color heredado negro en dark) ── */
+body.dark-theme .big-glass-btn {
+  background: #1f2937;
+  border-color: #4b5563;
+  color: #93c5fd;
+}
+body.dark-theme .big-glass-btn.filled {
+  background: rgba(59, 130, 246, .2);
+  border-color: #60a5fa;
+  color: #dbeafe;
+}
+body.dark-theme .big-glass-btn [data-lucide] {
+  stroke: #93c5fd;
+}
+body.dark-theme .big-glass-btn.filled [data-lucide] {
+  stroke: #dbeafe;
+}
+
+/* ── Fix revisor: variantes de toast conservan su color en dark ── */
+body.dark-theme .toast.success { background: var(--emerald-700); }
+body.dark-theme .toast.error { background: #b91c1c; }
+body.dark-theme .toast.info { background: #1e40af; }
+body.dark-theme .toast.ai { background: linear-gradient(135deg, var(--ai-from), var(--ai-to)); }
+
+/* ── Fix revisor: título del Chef IA visible en dark (--white invertida) ── */
+body.dark-theme .btn-chef-ai .chef-title {
+  color: #ffffff;
+}
