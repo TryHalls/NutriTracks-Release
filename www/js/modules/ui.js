@@ -2,6 +2,12 @@ import { App, LS } from './state.js';
 import * as Utils from './utils.js';
 import * as API from './api.js';
 import { LOCAL_FOOD_DB } from './db.js';
+import {
+  BackupError,
+  commitPreparedBackup,
+  parseAndPrepareBackup,
+  serializeFilteredBackup,
+} from './backup.js';
 
 let _html5QrcodeLoaded = null;
 function loadHtml5Qrcode() {
@@ -2180,23 +2186,8 @@ export function _executeRegisterScannedProduct(food, qty, sourceOverride) {
   if (App.currentPage === 'diary') refreshDiary();
 }
 export async function exportData() {
-    if (localStorage.length === 0) {
-        showToast("Error: No hay datos para respaldar.", "error");
-        return;
-    }
-
     try {
-        /* P2: La API key de IA (nt_ai_config) es sensible — NUNCA se incluye
-           en el respaldo para que no salga del dispositivo. */
-        const SENSITIVE_KEYS = ['nt_ai_config'];
-        const backup = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (SENSITIVE_KEYS.includes(key)) continue;
-            backup[key] = localStorage.getItem(key);
-        }
-
-        const dataStr = JSON.stringify(backup, null, 2);
+        const dataStr = serializeFilteredBackup(localStorage);
         const fileName = 'NutriTrack_Backup.json';
 
         // Verificar si estamos en la app nativa (Android) o en el navegador web
@@ -2248,46 +2239,16 @@ export function importData(event) {
   const reader = new FileReader();
   reader.onload = function (e) {
     try {
-      const backup = JSON.parse(e.target.result);
-
-      // Validar que el backup es un objeto plano y contiene datos esperados
-      if (!backup || typeof backup !== 'object' || Array.isArray(backup)) {
-        showToast("El archivo no tiene un formato de respaldo válido.", "error");
-        event.target.value = '';
-        return;
-      }
-
-      // Verificar que exista al menos la clave fundamental de usuario
-      const hasUserKey = Object.keys(backup).some(k => k === 'nt_user');
-      if (!hasUserKey) {
-        showToast("El respaldo no contiene datos de usuario (nt_user). ¿Es un archivo de NutriTrack?", "error");
-        event.target.value = '';
-        return;
-      }
+      // El módulo valida y migra el archivo completo antes de la confirmación
+      // y, por tanto, antes de la primera escritura en localStorage.
+      const prepared = parseAndPrepareBackup(String(e.target.result || ''));
 
       if (!confirm('¿Estás seguro de reemplazar todos tus datos actuales con este respaldo?')) {
         event.target.value = '';
         return;
       }
 
-      // Preservar la API key actual de IA: la exportación ya no la incluye,
-      // así que al importar NO se pierde la que ya tenía configurada el usuario.
-      const currentAIConfig = localStorage.getItem('nt_ai_config');
-
-      // Solo limpiar claves con prefijo nt_ (no borrar datos de otros orígenes)
-      Object.keys(localStorage)
-        .filter(k => k.startsWith('nt_'))
-        .forEach(k => localStorage.removeItem(k));
-
-      // Solo importar claves con prefijo nt_
-      for (const key in backup) {
-        if (backup.hasOwnProperty(key) && key.startsWith('nt_')) {
-          localStorage.setItem(key, backup[key]);
-        }
-      }
-
-      // Restaurar la key actual (si el backup trae una, la local tiene prioridad)
-      if (currentAIConfig) localStorage.setItem('nt_ai_config', currentAIConfig);
+      commitPreparedBackup(localStorage, prepared);
 
       showToast("Datos importados exitosamente. Recargando...", "success");
       setTimeout(() => {
@@ -2296,8 +2257,19 @@ export function importData(event) {
 
     } catch (error) {
       console.error("Error importando datos:", error);
-      showToast("Error al leer el archivo de respaldo. Verifica que sea un JSON válido.", "error");
+      if (error instanceof BackupError && error.code === 'BACKUP_ROLLBACK_FAILED') {
+        showToast("Error crítico: la restauración falló y no se pudo verificar la recuperación de los datos anteriores.", "error");
+      } else if (error instanceof BackupError && error.code === 'BACKUP_COMMIT_FAILED') {
+        showToast("La restauración falló. Los datos anteriores fueron recuperados y no se recargará la aplicación.", "error");
+      } else {
+        showToast(error.message || "El archivo no contiene un respaldo válido.", "error");
+      }
     }
+    event.target.value = '';
+  };
+
+  reader.onerror = function () {
+    showToast("No se pudo leer el archivo de respaldo.", "error");
     event.target.value = '';
   };
 
