@@ -1,5 +1,5 @@
 /* ================================================================
-   NutriTrack Pro — Service Worker v6
+   NutriTrack Pro — Service Worker v7
    Estrategia:
      · App Shell + CDN → Cache-First (offline robusto)
      · API externa (OFF, Gemini) → Network-Only (datos frescos)
@@ -11,7 +11,7 @@
      · Las URLs con ?v= de APP_SHELL_LOCAL deben coincidir EXACTAMENTE
        con las que referencia www/index.html (grep 'v=' www/index.html). */
 
-const VERSION = 6;
+const VERSION = 7;
 const CACHE_NAME = 'nutritrack-pro-cache-v' + VERSION;
 
 /* Recursos locales a cachear en la instalación */

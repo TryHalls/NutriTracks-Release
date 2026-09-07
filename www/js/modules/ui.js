@@ -675,7 +675,12 @@ export async function refreshAIInsight(force = false) {
   const todayStr = Utils.toDateStr(new Date());
   const logs = readSecondary('food_logs_' + todayStr, []);
   const totals = logs.reduce(
-    (acc, l) => ({ cal: acc.cal + (l.calories || 0), prot: acc.prot + (l.protein || 0), carbs: acc.carbs + (l.carbs || 0), fat: acc.fat + (l.fat || 0) }),
+    (acc, l) => ({
+      cal: acc.cal + (finiteHistoricalNumber(l.calories) ?? 0),
+      prot: acc.prot + (finiteHistoricalNumber(l.protein) ?? 0),
+      carbs: acc.carbs + (finiteHistoricalNumber(l.carbs) ?? 0),
+      fat: acc.fat + (finiteHistoricalNumber(l.fat) ?? 0),
+    }),
     { cal: 0, prot: 0, carbs: 0, fat: 0 }
   );
   const sig = todayStr + '|' + totals.cal + '|' + totals.prot + '|' + totals.carbs + '|' + totals.fat;
@@ -832,11 +837,9 @@ export function removeFavorite(favId) {
     showPersistenceFailure(error, 'eliminar el favorito');
     return false;
   }
-  _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
   renderFavorites();
-  /* P0 fix: refrescar el diario para que la estrella no quede obsoleta al
-     quitar un favorito desde el modal. Barato: la firma está invalidada,
-     solo se reconstruye lo necesario. */
+  /* Refrescar el diario para que la estrella no quede obsoleta al quitar un
+     favorito desde el modal. */
   if (App.diaryLogs?.length) refreshDiary();
   showToast('Eliminado de favoritos', 'info');
   return true;
@@ -1372,7 +1375,7 @@ export async function refreshDashboard() {
   const mealCal = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
   for (let i = 0; i < App.todayLogs.length; i++) {
     const m = App.todayLogs[i].meal_type;
-    if (mealCal[m] !== undefined) mealCal[m] += (App.todayLogs[i].calories || 0);
+    if (mealCal[m] !== undefined) mealCal[m] += (finiteHistoricalNumber(App.todayLogs[i].calories) ?? 0);
   }
   for (const m in mealCal) {
     const el = document.getElementById(`mini-${m}`);
@@ -1393,16 +1396,31 @@ export async function refreshDashboard() {
   }
   return true;
 }
+/* Los datos locales de versiones anteriores pueden contener números como
+   strings. Sólo se aceptan conversiones completas y finitas para presentar y
+   sumar; los demás valores se omiten sin modificar el registro persistido. */
+export function finiteHistoricalNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const normalized = value.trim();
+  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function roundedHistoricalValue(value) {
+  const parsed = finiteHistoricalNumber(value);
+  return parsed === null ? null : Math.round(parsed);
+}
 export function computeTotals(logs) {
   /* P0: Corrección de typo — acc.prot → acc.protein (evita NaN en dashboard) */
   return logs.reduce(
     (acc, l) => ({
-      calories: acc.calories + (l.calories || 0),
-      protein: acc.protein + (l.protein || 0),
-      carbs: acc.carbs + (l.carbs || 0),
-      fat: acc.fat + (l.fat || 0),
-      fiber: acc.fiber + (l.fiber || 0),
-      sugar: acc.sugar + (l.sugar || 0)
+      calories: acc.calories + (finiteHistoricalNumber(l.calories) ?? 0),
+      protein: acc.protein + (finiteHistoricalNumber(l.protein) ?? 0),
+      carbs: acc.carbs + (finiteHistoricalNumber(l.carbs) ?? 0),
+      fat: acc.fat + (finiteHistoricalNumber(l.fat) ?? 0),
+      fiber: acc.fiber + (finiteHistoricalNumber(l.fiber) ?? 0),
+      sugar: acc.sugar + (finiteHistoricalNumber(l.sugar) ?? 0)
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }
   );
@@ -1537,10 +1555,6 @@ export function changeDate(delta) {
 /* P2: Solo anima los ítems nuevos (evita re-disparar cascadeFadeIn sobre toda la lista) */
 let _renderedDiaryIds = new Set();
 let _renderedDiaryDate = '';
-/* P0 Optimización: firma por (fecha + comida) → si los datos no cambiaron,
-   NO se reconstruye el DOM del diario (antes se re-renderizaba todo en cada
-   navegación al Diario o tras cada guardado). */
-const _mealSignatures = new Map();
 export function renderDiaryMeals(logs) {
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
   if (dateStr !== _renderedDiaryDate) {
@@ -1550,23 +1564,17 @@ export function renderDiaryMeals(logs) {
   const favIdentitySet = new Set(getFavorites().map(getFoodIdentity));
   const newIds = new Set(logs.map(l => l.id));
   const animateOnlyNew = _renderedDiaryIds.size > 0;
-  /* P0 fix: el estado de favoritos se incluye en la firma para que al quitar
-     un favorito desde el modal la estrella del diario no quede obsoleta. */
-  const favSig = Array.from(favIdentitySet).sort().join(',');
-  let changed = false;
   ['breakfast', 'lunch', 'dinner', 'snack'].forEach(meal => {
     const mealLogs = logs.filter(l => l.meal_type === meal);
     const list = document.getElementById(`food-list-${meal}`);
     if (!list) return;
     const calEl = list.parentElement?.querySelector('.meal-cal-display');
-    const sig = (mealLogs.length
-      ? mealLogs.map(l => `${l.id}:${l.food_name}:${l.quantity}:${l.calories}:${l.protein}:${l.carbs}:${l.fat}:${l.fiber}:${l.source}`).join('|')
-      : '__EMPTY') + '#' + favSig;
-    const sigKey = dateStr + ':' + meal;
-    if (_mealSignatures.get(sigKey) === sig) return; /* sin cambios → no tocar el DOM */
-    _mealSignatures.set(sigKey, sig);
-    changed = true;
-    if (calEl) calEl.textContent = Math.round(mealLogs.reduce((s, l) => s + (l.calories || 0), 0));
+    if (calEl) {
+      calEl.textContent = Math.round(mealLogs.reduce(
+        (sum, log) => sum + (finiteHistoricalNumber(log.calories) ?? 0),
+        0,
+      ));
+    }
     if (!mealLogs.length) {
       list.innerHTML = `<div class="empty-state"><div class="empty-icon"><i data-lucide="utensils"></i></div><p>Sin alimentos registrados<br><small>Usa IA o búsqueda manual ↑</small></p></div>`;
       return;
@@ -1584,7 +1592,7 @@ export function renderDiaryMeals(logs) {
     list.appendChild(fragment);
   });
   _renderedDiaryIds = newIds;
-  if (changed && typeof lucide !== 'undefined') lucide.createIcons();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 export function createFoodItem(log, favIdentitySet) {
   const isFav = favIdentitySet ? favIdentitySet.has(getFoodIdentity(log)) : getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
@@ -1601,7 +1609,13 @@ export function createFoodItem(log, favIdentitySet) {
     ? `<span class="food-source-badge off">OFF</span>`
     : `<span class="food-source-badge manual">Manual</span>`;
   const dotClass = source === 'ai' ? 'food-item-dot ai-source' : 'food-item-dot';
-  item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${log.quantity ? log.quantity + 'g' : '—'}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${Math.round(log.calories)} kcal</div>`;
+  const quantity = finiteHistoricalNumber(log.quantity);
+  const calories = roundedHistoricalValue(log.calories);
+  const protein = roundedHistoricalValue(log.protein);
+  const carbs = roundedHistoricalValue(log.carbs);
+  const fat = roundedHistoricalValue(log.fat);
+  const fiber = roundedHistoricalValue(log.fiber);
+  item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${quantity !== null && quantity !== 0 ? escapeHtml(quantity) + 'g' : '—'}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${calories === null ? '—' : calories + ' kcal'}</div>`;
   /* Bloque expandible: macros + acciones (favorito / editar / eliminar).
      Se inserta DESPUÉS del ítem en el DOM para que se despliegue hacia abajo
      (antes iba antes en el orden de hijos y la info aparecía arriba del alimento). */
@@ -1610,10 +1624,10 @@ export function createFoodItem(log, favIdentitySet) {
   expanded.innerHTML = `
     <div class="food-expanded-inner">
       <div class="food-micro-grid">
-        <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${Math.round(log.protein || 0)}g</div><div class="micro-lbl">Prot</div></div>
-        <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${Math.round(log.carbs || 0)}g</div><div class="micro-lbl">Carbs</div></div>
-        <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${Math.round(log.fat || 0)}g</div><div class="micro-lbl">Grasas</div></div>
-        <div class="micro-item"><div class="micro-val">${Math.round(log.fiber || 0)}g</div><div class="micro-lbl">Fibra</div></div>
+        <div class="micro-item"><div class="micro-val" style="color:var(--protein-color)">${protein ?? '—'}${protein === null ? '' : 'g'}</div><div class="micro-lbl">Prot</div></div>
+        <div class="micro-item"><div class="micro-val" style="color:var(--carbs-color)">${carbs ?? '—'}${carbs === null ? '' : 'g'}</div><div class="micro-lbl">Carbs</div></div>
+        <div class="micro-item"><div class="micro-val" style="color:var(--fat-color)">${fat ?? '—'}${fat === null ? '' : 'g'}</div><div class="micro-lbl">Grasas</div></div>
+        <div class="micro-item"><div class="micro-val">${fiber ?? '—'}${fiber === null ? '' : 'g'}</div><div class="micro-lbl">Fibra</div></div>
       </div>
       <div class="food-expanded-actions">
         <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
@@ -1853,7 +1867,10 @@ export function loadAndRenderCaloriesChart() {
     const d = new Date(); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
     const dayLogs = readSecondary('food_logs_' + Utils.toDateStr(d), []);
-    consumed.push(Math.round(dayLogs.reduce((s, l) => s + (l.calories || 0), 0)));
+    consumed.push(Math.round(dayLogs.reduce(
+      (sum, log) => sum + (finiteHistoricalNumber(log.calories) ?? 0),
+      0,
+    )));
     goalLine.push(dailyGoal);
   }
 
@@ -2014,7 +2031,6 @@ export function clearDataConfirm() {
   _editFoodBase = null;
   _aiInsightSig = '';
   _aiInsightText = null;
-  _mealSignatures.clear();
   _renderedDiaryIds = new Set();
   _renderedDiaryDate = '';
   _ringData = null;
@@ -2693,7 +2709,6 @@ export function toggleFavorite(food, updateUI) {
     return false;
   }
 
-  _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
   renderFavorites();
   if (App.diaryLogs?.length) refreshDiary();
   if (typeof updateUI === 'function') updateUI(nextFavorites);
