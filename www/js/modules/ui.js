@@ -1,4 +1,4 @@
-import { App, LS } from './state.js';
+import { App, LS, PersistenceCode } from './state.js';
 import * as Utils from './utils.js';
 import * as API from './api.js';
 import { LOCAL_FOOD_DB } from './db.js';
@@ -97,6 +97,25 @@ export function showToast(message, type = 'success', icon = '') {
   }
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3400);
+}
+
+export function showPersistenceFailure(error, action = 'guardar los datos') {
+  console.error(`[Persistencia] No se pudo ${action}:`, error);
+  const message = error?.code === PersistenceCode.ROLLBACK_FAILED
+    ? `Error crítico al ${action}: no se pudo confirmar la recuperación de los datos anteriores.`
+    : `No se pudo ${action}. Tus cambios no se aplicaron.`;
+  showToast(message, 'error');
+}
+
+// Recuperación limitada a datos secundarios de presentación. No reescribe ni
+// elimina el valor corrupto: queda disponible para diagnóstico/recuperación.
+function readSecondary(key, fallback) {
+  try {
+    return LS.get(key, fallback);
+  } catch (error) {
+    console.error(`[Persistencia] Dato secundario no disponible (${key}):`, error);
+    return fallback;
+  }
 }
 export function setGreeting() {
   if (!App.user) return;
@@ -517,7 +536,13 @@ export async function saveEditedAIFoods() {
 
   // 2. Obtener los logs existentes para este día
   const key = 'food_logs_' + dateStr;
-  const existing = LS.get(key, []);
+  let existing;
+  try {
+    existing = LS.get(key, []);
+  } catch (error) {
+    showPersistenceFailure(error, 'leer el diario antes de guardar');
+    return false;
+  }
 
   // 3. Crear un Set con los IDs de los nuevos logs (para evitar duplicados)
   const ids = new Set(newLogs.map(l => l.id));
@@ -526,7 +551,12 @@ export async function saveEditedAIFoods() {
   const filtered = existing.filter(l => !ids.has(l.id));
 
   // 5. Guardar TODO en UNA sola operación
-  LS.set(key, [...filtered, ...newLogs]);
+  try {
+    LS.set(key, [...filtered, ...newLogs]);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar los alimentos');
+    return false;
+  }
 
   // El resto del código igual
   closeAIFoodEditModal();
@@ -538,10 +568,10 @@ export async function saveEditedAIFoods() {
   const count = document.getElementById('ai-char-count');
   if (count) count.textContent = '0/500';
 
-  showToast(`✦ ${foods.length} alimento(s) guardado(s) en ${API.getSelectedAIMealLabel()}`, 'ai', '✦');
-
   await refreshDiary();
-  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'home') await refreshDashboard();
+  showToast(`✦ ${foods.length} alimento(s) guardado(s) en ${API.getSelectedAIMealLabel()}`, 'ai', '✦');
+  return true;
 }
 let _gramsPersistTimer = null;
 export function setupAIEditorListeners() {
@@ -643,7 +673,7 @@ export async function refreshAIInsight(force = false) {
   if (!bodyEl || !textEl) return;
 
   const todayStr = Utils.toDateStr(new Date());
-  const logs = LS.get('food_logs_' + todayStr, []);
+  const logs = readSecondary('food_logs_' + todayStr, []);
   const totals = logs.reduce(
     (acc, l) => ({ cal: acc.cal + (l.calories || 0), prot: acc.prot + (l.protein || 0), carbs: acc.carbs + (l.carbs || 0), fat: acc.fat + (l.fat || 0) }),
     { cal: 0, prot: 0, carbs: 0, fat: 0 }
@@ -751,40 +781,42 @@ export function getSelectedAIMeal() { return App.selectedAIMeal || 'breakfast'; 
 
 /* P1: Controlador global para cancelar la búsqueda activa */
 // ─── FAVORITOS: Lectura con migración automática de clave legacy ───
-export function getFavorites() {
-  // LS ya agrega 'nt_' automáticamente → clave real = 'nt_favorites'
-  const current = LS.get('favorites', null);
-  if (current !== null) return current;
-
-  // Migración única: 'nt_favorites' en rawLS era la clave antigua del script monolítico.
-  // LS.get('nt_favorites') leería 'nt_nt_favorites' (doble prefijo → siempre vacío).
-  // Por eso lo leemos directamente desde localStorage para migrar correctamente.
+export function getFavorites({ strict = false } = {}) {
   try {
-    const raw = localStorage.getItem('nt_favorites');
-    if (raw) {
-      const migrated = JSON.parse(raw);
-      if (Array.isArray(migrated) && migrated.length > 0) {
-        LS.set('favorites', migrated);           // guardar en clave correcta (nt_favorites)
-        localStorage.removeItem('nt_favorites'); // limpiar copia legacy
-        return migrated;
-      }
-    }
-  } catch (_) {}
-  return [];
+    const current = LS.get('favorites', null);
+    if (current !== null) return Array.isArray(current) ? current : [];
+
+    // Alias histórico real: LS añade nt_, por lo que este nombre lógico lee
+    // nt_nt_favorites. La migración escribe canonical y elimina el alias en
+    // una sola transacción verificada.
+    const legacy = LS.get('nt_favorites', null);
+    if (!Array.isArray(legacy)) return [];
+    LS.setMany({ favorites: legacy }, { remove: ['nt_favorites'] });
+    return legacy;
+  } catch (error) {
+    if (strict) throw error;
+    console.error('[Persistencia] No se pudieron leer/migrar los favoritos:', error);
+    return [];
+  }
 }
 // Recibe el id del log Y la referencia al botón para actualizar su texto en tiempo real
 export function addLogToFavorites(logId, btnEl) {
   const log = App.diaryLogs.find(l => l.id === logId);
   if (!log) return;
-  toggleFavorite(log);
-  // Actualizar el botón inmediatamente sin re-renderizar todo el diario
-  if (btnEl) {
-    const isNowFav = getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
+  return toggleFavorite(log, (nextFavorites) => {
+    if (!btnEl) return;
+    const isNowFav = nextFavorites.some(f => getFoodIdentity(f) === getFoodIdentity(log));
     btnEl.textContent = isNowFav ? '★ En favoritos' : '☆ Favorito';
-  }
+  });
 }
 export function removeFavorite(favId) {
-  let favs = getFavorites();
+  let favs;
+  try {
+    favs = getFavorites({ strict: true });
+  } catch (error) {
+    showPersistenceFailure(error, 'leer los favoritos');
+    return false;
+  }
   // Eliminar por nombre normalizado (consistente con la lógica de toggleFavorite)
   // con fallback a id para compatibilidad con datos anteriores
   const target = favs.find(f => f.id === favId);
@@ -794,14 +826,20 @@ export function removeFavorite(favId) {
   } else {
     favs = favs.filter(f => f.id !== favId);
   }
-  LS.set('favorites', favs);
+  try {
+    LS.setMany({ favorites: favs }, { remove: ['nt_favorites'] });
+  } catch (error) {
+    showPersistenceFailure(error, 'eliminar el favorito');
+    return false;
+  }
   _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
   renderFavorites();
-  showToast('Eliminado de favoritos', 'info');
   /* P0 fix: refrescar el diario para que la estrella no quede obsoleta al
      quitar un favorito desde el modal. Barato: la firma está invalidada,
      solo se reconstruye lo necesario. */
   if (App.diaryLogs?.length) refreshDiary();
+  showToast('Eliminado de favoritos', 'info');
+  return true;
 }
 export function renderFavorites() {
   const container = document.getElementById('favorites-list');
@@ -987,14 +1025,14 @@ export function renderFoodSearchResults(foods) {
     const favBtn = item.querySelector('.sri-fav-btn');
     favBtn.onclick = (e) => {
       e.stopPropagation();
-      toggleFavorite(food);
-      const isNowFav = getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(food));
-      favBtn.textContent = isNowFav ? '★' : '☆';
-      // Micro-animación de pop al tocar la estrella
-      favBtn.classList.remove('just-toggled');
-      void favBtn.offsetWidth; // fuerza reflow para reiniciar la animación
-      favBtn.classList.add('just-toggled');
-      renderFavorites();
+      toggleFavorite(food, (nextFavorites) => {
+        const isNowFav = nextFavorites.some(f => getFoodIdentity(f) === getFoodIdentity(food));
+        favBtn.textContent = isNowFav ? '★' : '☆';
+        // Micro-animación de pop al tocar la estrella
+        favBtn.classList.remove('just-toggled');
+        void favBtn.offsetWidth; // fuerza reflow para reiniciar la animación
+        favBtn.classList.add('just-toggled');
+      });
     };
 
     item.onclick = () => selectFoodFromSearch(food);
@@ -1034,50 +1072,68 @@ export async function confirmAddFood() {
     source,
   };
 
-  saveFoodLogLocal(logData);
+  try {
+    saveFoodLogLocal(logData);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar el alimento');
+    return false;
+  }
   closeModal();
-  showToast(`${food.name} añadido ✓`, 'success');
   await refreshDiary();
-  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'home') await refreshDashboard();
+  showToast(`${food.name} añadido ✓`, 'success');
+  return true;
 }
 export async function quickAddCalories() {
   const input = document.getElementById('quick-cal-input');
   const cal = parseFloat(input?.value);
   if (!cal || cal <= 0 || cal > 9999) { showToast('Ingresa una cantidad válida', 'error'); return; }
 
-  saveFoodLogLocal({
-    id: crypto.randomUUID(),
-    user_id: App.user?.id || 'local',
-    date: Utils.toDateStr(App.currentDiaryDate),
-    meal_type: App.currentMealType,
-    food_name: 'Entrada rápida',
-    quantity: 0,
-    calories: cal,
-    protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0,
-    source: 'manual',
-  });
+  try {
+    saveFoodLogLocal({
+      id: crypto.randomUUID(),
+      user_id: App.user?.id || 'local',
+      date: Utils.toDateStr(App.currentDiaryDate),
+      meal_type: App.currentMealType,
+      food_name: 'Entrada rápida',
+      quantity: 0,
+      calories: cal,
+      protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0,
+      source: 'manual',
+    });
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar la entrada rápida');
+    return false;
+  }
 
   closeModal();
-  showToast(`${cal} kcal añadidas`, 'success');
   await refreshDiary();
-  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'home') await refreshDashboard();
+  showToast(`${cal} kcal añadidas`, 'success');
+  return true;
 }
 export function saveFoodLogLocal(logData) {
   const key = 'food_logs_' + logData.date;
   const existing = LS.get(key, []);
-  LS.set(key, [...existing.filter(l => l.id !== logData.id), logData]);
+  return LS.set(key, [...existing.filter(l => l.id !== logData.id), logData]);
 }
 export function deleteFoodLogLocal(logId, dateStr) {
   const key = 'food_logs_' + dateStr;
-  LS.set(key, LS.get(key, []).filter(l => l.id !== logId));
+  return LS.set(key, LS.get(key, []).filter(l => l.id !== logId));
 }
 export async function deleteFoodLog(logId) {
   if (!confirm('¿Eliminar este alimento?')) return;
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
-  deleteFoodLogLocal(logId, dateStr);
-  showToast('Alimento eliminado', 'info');
+  try {
+    deleteFoodLogLocal(logId, dateStr);
+  } catch (error) {
+    showPersistenceFailure(error, 'eliminar el alimento');
+    return false;
+  }
   await refreshDiary();
-  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'home') await refreshDashboard();
+  showToast('Alimento eliminado', 'info');
+  return true;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1158,11 +1214,17 @@ export async function saveEditedFoodLog() {
   const fat = Utils.round1(document.getElementById('edit-food-fat')?.value);
 
   const updated = { ...log, food_name: name, quantity: grams, calories: kcal, protein, carbs, fat };
-  saveFoodLogLocal(updated);
+  try {
+    saveFoodLogLocal(updated);
+  } catch (error) {
+    showPersistenceFailure(error, 'actualizar el alimento');
+    return false;
+  }
   closeEditFoodModal();
-  showToast('Alimento actualizado ✓', 'success');
   await refreshDiary();
-  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'home') await refreshDashboard();
+  showToast('Alimento actualizado ✓', 'success');
+  return true;
 }
 
 export function setupEditFoodListeners() {
@@ -1196,15 +1258,13 @@ export function setupEditFoodListeners() {
   document.getElementById('edit-food-fav-btn')?.addEventListener('click', () => {
     const log = App.diaryLogs.find(l => l.id === _editFoodLogId);
     if (!log) return;
-    toggleFavorite(log);
-    updateEditFoodFavBtn(log);
+    toggleFavorite(log, () => updateEditFoodFavBtn(log));
   });
 
-  document.getElementById('evt_edit_del')?.addEventListener('click', () => {
+  document.getElementById('evt_edit_del')?.addEventListener('click', async () => {
     if (!_editFoodLogId) return;
     const logId = _editFoodLogId;
-    closeEditFoodModal();
-    deleteFoodLog(logId);
+    if (await deleteFoodLog(logId)) closeEditFoodModal();
   });
 
   document.getElementById('evt_edit_save')?.addEventListener('click', () => saveEditedFoodLog());
@@ -1292,8 +1352,18 @@ export function setupEditFoodListeners() {
 export async function refreshDashboard() {
   if (!App.user) return;
   const todayStr = Utils.toDateStr(new Date());
-  App.todayLogs = LS.get('food_logs_' + todayStr, []);
-  const totals = computeTotals(App.todayLogs);
+  let nextTodayLogs;
+  let nextTodayWater;
+  try {
+    nextTodayLogs = LS.get('food_logs_' + todayStr, []);
+    nextTodayWater = LS.get('water_' + todayStr, 0);
+  } catch (error) {
+    showPersistenceFailure(error, 'leer los datos de hoy');
+    return false;
+  }
+  App.todayLogs = nextTodayLogs;
+  App.todayWater = nextTodayWater;
+  const totals = computeTotals(nextTodayLogs);
 
   updateCaloriesRing(totals.calories, App.user.daily_calories);
   updateMacroBars(totals);
@@ -1309,7 +1379,6 @@ export async function refreshDashboard() {
     if (el) el.textContent = Math.round(mealCal[m]) + ' kcal';
   }
 
-  loadTodayWater();
   renderDashboardWater();
 
   /* P2: Estado del Dashboard — mostrar mensaje neutral si el día está vacío */
@@ -1322,6 +1391,7 @@ export async function refreshDashboard() {
         '! Registra tus primeras comidas del día para recibir consejos personalizados de tu Coach IA.';
     }
   }
+  return true;
 }
 export function computeTotals(logs) {
   /* P0: Corrección de typo — acc.prot → acc.protein (evita NaN en dashboard) */
@@ -1433,18 +1503,30 @@ export function renderDashboardWater(forceRebuild = false) {
 }
 export async function quickSetWater(glasses) {
   const goal = App.user?.water_goal || 8;
+  try {
+    LS.set('water_' + Utils.toDateStr(new Date()), glasses);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar el agua');
+    return false;
+  }
   App.todayWater = glasses;
-  LS.set('water_' + Utils.toDateStr(new Date()), glasses);
   renderDashboardWater();
   if (glasses >= goal) showToast('¡Meta de hidratación alcanzada! 🎉', 'success');
   else showToast(`${glasses} vasos registrados`, 'info');
+  return true;
 }
 export async function refreshDiary() {
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
   const label = document.getElementById('diary-date-label');
   if (label) label.textContent = Utils.formatDateLabel(App.currentDiaryDate);
-  App.diaryLogs = LS.get('food_logs_' + dateStr, []);
+  try {
+    App.diaryLogs = LS.get('food_logs_' + dateStr, []);
+  } catch (error) {
+    showPersistenceFailure(error, 'leer el diario');
+    return false;
+  }
   renderDiaryMeals(App.diaryLogs);
+  return true;
 }
 export function changeDate(delta) {
   const d = new Date(App.currentDiaryDate);
@@ -1581,8 +1663,15 @@ export function escapeHtml(str) {
   /* P0: paridad con el comportamiento anterior (str || '') para falsy */
   return String(str || '').replace(/[&<>"']/g, c => _ESC_MAP[c]);
 }
-export async function refreshWaterPage() {
-  loadTodayWater();
+export async function refreshWaterPage(reloadFromStorage = true) {
+  if (reloadFromStorage) {
+    try {
+      loadTodayWater();
+    } catch (error) {
+      showPersistenceFailure(error, 'leer el agua de hoy');
+      return false;
+    }
+  }
   const goal = App.user?.water_goal || 8;
   const current = App.todayWater || 0;
 
@@ -1604,6 +1693,7 @@ export async function refreshWaterPage() {
 
   renderBigGlassGrid(current, goal);
   renderWaterChart();
+  return true;
 }
 export function updateWaterProgressArc(current, goal) {
   const arc = document.getElementById('water-progress-arc');
@@ -1640,29 +1730,49 @@ export function renderBigGlassGrid(current, goal) {
 export async function addWater() {
   const goal = App.user?.water_goal || 8;
   if (App.todayWater >= goal) { showToast('¡Meta de hidratación alcanzada!', 'info'); return; }
-  App.todayWater++;
-  LS.set('water_' + Utils.toDateStr(new Date()), App.todayWater);
-  refreshWaterPage();
+  const next = App.todayWater + 1;
+  try {
+    LS.set('water_' + Utils.toDateStr(new Date()), next);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar el agua');
+    return false;
+  }
+  App.todayWater = next;
+  await refreshWaterPage(false);
   renderDashboardWater();
   if (App.todayWater === goal) showToast('¡Meta de hidratación alcanzada!', 'success');
   else showToast(`+1 vaso → ${App.todayWater}/${goal}`, 'info');
+  return true;
 }
 export async function removeWater() {
   if (App.todayWater <= 0) return;
-  App.todayWater--;
-  LS.set('water_' + Utils.toDateStr(new Date()), App.todayWater);
-  refreshWaterPage();
+  const next = App.todayWater - 1;
+  try {
+    LS.set('water_' + Utils.toDateStr(new Date()), next);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar el agua');
+    return false;
+  }
+  App.todayWater = next;
+  await refreshWaterPage(false);
   renderDashboardWater();
   showToast(`Vaso removido → ${App.todayWater}`, 'info');
+  return true;
 }
 export async function setWaterTo(count) {
   const goal = App.user?.water_goal || 8;
+  try {
+    LS.set('water_' + Utils.toDateStr(new Date()), count);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar el agua');
+    return false;
+  }
   App.todayWater = count;
-  LS.set('water_' + Utils.toDateStr(new Date()), count);
-  refreshWaterPage();
+  await refreshWaterPage(false);
   renderDashboardWater();
   if (count >= goal) showToast('¡Meta de hidratación alcanzada! 🎉', 'success');
   else showToast(`${count} vasos registrados`, 'info');
+  return true;
 }
 export function renderWaterChart() {
   const canvas = document.getElementById('water-chart');
@@ -1672,7 +1782,7 @@ export function renderWaterChart() {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
-    values.push(LS.get('water_' + Utils.toDateStr(d), 0));
+    values.push(readSecondary('water_' + Utils.toDateStr(d), 0));
   }
   if (App.waterChartInst) {
     App.waterChartInst.data.labels = labels;
@@ -1700,7 +1810,7 @@ export async function refreshProgress() {
 export function loadAndRenderWeightChart() {
   const canvas = document.getElementById('weight-chart');
   if (!canvas) return;
-  let weightLogs = LS.get('weight_logs', []).sort((a, b) => a.date.localeCompare(b.date));
+  let weightLogs = readSecondary('weight_logs', []).sort((a, b) => a.date.localeCompare(b.date));
   if (!weightLogs.length && App.user.weight) weightLogs = [{ date: Utils.toDateStr(new Date()), weight: App.user.weight }];
 
   const labels = weightLogs.map(l => { const d = new Date(l.date + 'T12:00:00'); return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }); });
@@ -1742,7 +1852,7 @@ export function loadAndRenderCaloriesChart() {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
-    const dayLogs = LS.get('food_logs_' + Utils.toDateStr(d), []);
+    const dayLogs = readSecondary('food_logs_' + Utils.toDateStr(d), []);
     consumed.push(Math.round(dayLogs.reduce((s, l) => s + (l.calories || 0), 0)));
     goalLine.push(dailyGoal);
   }
@@ -1777,20 +1887,34 @@ export async function logWeight() {
   if (!weight || weight < 20 || weight > 300) { showToast('Ingresa un peso válido (20-300 kg)', 'error'); return; }
 
   const todayStr = Utils.toDateStr(new Date());
-  const lsLogs = LS.get('weight_logs', []);
-  const idx = lsLogs.findIndex(l => l.date === todayStr);
-  if (idx >= 0) lsLogs[idx].weight = weight;
-  else lsLogs.push({ date: todayStr, weight });
-  LS.set('weight_logs', lsLogs);
+  let currentLogs;
+  try {
+    currentLogs = LS.get('weight_logs', []);
+  } catch (error) {
+    showPersistenceFailure(error, 'leer el historial de peso');
+    return false;
+  }
+  const hasToday = currentLogs.some((log) => log.date === todayStr);
+  const nextWeightLogs = hasToday
+    ? currentLogs.map((log) => log.date === todayStr ? { ...log, weight } : log)
+    : [...currentLogs, { date: todayStr, weight }];
+  const nextUser = { ...App.user, weight };
 
-  App.user.weight = weight;
-  LS.set('user', App.user);
-  showToast(`Peso registrado: ${weight} kg`, 'success');
+  try {
+    LS.setMany({ weight_logs: nextWeightLogs, user: nextUser });
+  } catch (error) {
+    showPersistenceFailure(error, 'registrar el peso');
+    return false;
+  }
+
+  App.user = nextUser;
   if (input) input.value = '';
 
   [App.weightChartInst, App.caloriesChartInst].forEach(c => { if (c) { c.destroy(); } });
   App.weightChartInst = App.caloriesChartInst = null;
-  refreshProgress();
+  await refreshProgress();
+  showToast(`Peso registrado: ${weight} kg`, 'success');
+  return true;
 }
 export function refreshProfile() {
   const u = App.user;
@@ -1836,25 +1960,82 @@ export async function saveProfile() {
   const dailyCal = Utils.calculateDailyCalories(tdee, goal);
   const macros = Utils.calculateMacros(dailyCal, goal);
 
-  App.user = {
+  const nextUser = {
     ...App.user,
     name, age, height, weight, activity_level: activity, goal,
     bmr: Math.round(bmr), daily_calories: dailyCal, protein_goal: macros.protein, carbs_goal: macros.carbs, fat_goal: macros.fat
   };
-  LS.setUser(App.user);
+  try {
+    LS.setUser(nextUser);
+  } catch (error) {
+    showPersistenceFailure(error, 'actualizar el perfil');
+    return false;
+  }
+  App.user = nextUser;
 
   setGreeting();
   refreshProfile();
   document.getElementById('edit-profile-form')?.classList.remove('open');
-  showToast('Perfil actualizado ✓', 'success');
   await refreshDashboard();
+  showToast('Perfil actualizado ✓', 'success');
+  return true;
 }
 export function clearDataConfirm() {
   if (!confirm('⚠️ Esto eliminará TODOS tus datos y reiniciará la aplicación. ¿Estás seguro?')) return;
-  Object.keys(localStorage).filter(k => k.startsWith('nt_')).forEach(k => localStorage.removeItem(k));
-  App.user = null; App.todayLogs = []; App.todayWater = 0;
+  try {
+    LS.clearManaged({ includeSensitive: true });
+  } catch (error) {
+    showPersistenceFailure(error, 'eliminar los datos');
+    return false;
+  }
+
+  void _stopBarcodeScanner();
+  if (App.aiImage?.previewUrl) URL.revokeObjectURL(App.aiImage.previewUrl);
+  if (App.recognition) {
+    try { App.recognition.stop(); } catch (_) {}
+  }
+  App.user = null;
+  App.todayLogs = [];
+  App.diaryLogs = [];
+  App.todayWater = 0;
+  App.selectedFood = null;
+  App.aiImage = null;
+  App._pendingAIFoods = null;
+  App.aiEditorIndex = 0;
+  App.selectedAIMeal = 'breakfast';
+  App.currentMealType = 'breakfast';
+  App.currentDiaryDate = new Date();
+  App.lastAIInputMode = 'text';
+  App.lastAISourceMode = null;
+  App.allFoods = [];
+  App.recognition = null;
+  pendingFavToAdd = null;
+  _editFoodLogId = null;
+  _editFoodBase = null;
+  _aiInsightSig = '';
+  _aiInsightText = null;
+  _mealSignatures.clear();
+  _renderedDiaryIds = new Set();
+  _renderedDiaryDate = '';
+  _ringData = null;
+  ScannerState.pendingFood = null;
+  ScannerState.pendingFoodSource = null;
+  ScannerState.processed = false;
+  ScannerState.selectedMeal = 'breakfast';
+  ScannerState.scanning = false;
   [App.caloriesRingChart, App.weightChartInst, App.caloriesChartInst, App.waterChartInst].forEach(c => { if (c) { c.destroy(); } });
   App.caloriesRingChart = App.weightChartInst = App.caloriesChartInst = App.waterChartInst = null;
+
+  ['food-modal', 'edit-food-modal', 'ai-edit-modal', 'favorites-modal', 'scanner-container']
+    .forEach((id) => document.getElementById(id)?.classList.remove('open'));
+  ['food-search-input', 'qty-input', 'quick-cal-input', 'ai-food-input', 'scanner-manual-code', 'scanner-conf-grams']
+    .forEach((id) => { const input = document.getElementById(id); if (input) input.value = ''; });
+  ['food-search-results', 'favorites-list', 'ai-results-list']
+    .forEach((id) => { const container = document.getElementById(id); if (container) container.innerHTML = ''; });
+  const aiResults = document.getElementById('ai-results');
+  if (aiResults) aiResults.style.display = 'none';
+  const scannerConfirmation = document.getElementById('scanner-confirmation');
+  if (scannerConfirmation) scannerConfirmation.style.display = 'none';
 
   currentStep = 0;
   Object.keys(ob).forEach(k => ob[k] = '');
@@ -1867,6 +2048,7 @@ export function clearDataConfirm() {
   document.getElementById('onboarding-screen').style.opacity = '1';
   document.getElementById('app').classList.add('hidden');
   showToast('Datos eliminados', 'info');
+  return true;
 }
 export let currentStep = 0;
 export const totalSteps = 4;
@@ -1959,12 +2141,14 @@ export async function finishOnboarding() {
     water_goal: 8
   };
 
-  LS.setUser(userData);
+  const nextWeightLogs = [{ date: Utils.toDateStr(new Date()), weight: ob.weight }];
+  try {
+    LS.setMany({ user: userData, weight_logs: nextWeightLogs });
+  } catch (error) {
+    showPersistenceFailure(error, 'completar el onboarding');
+    return false;
+  }
   App.user = userData;
-
-  const lsLogs = LS.get('weight_logs', []);
-  lsLogs.push({ date: Utils.toDateStr(new Date()), weight: ob.weight });
-  LS.set('weight_logs', lsLogs);
 
   const screen = document.getElementById('onboarding-screen');
   screen.style.transition = 'opacity .4s ease';
@@ -1976,12 +2160,15 @@ export async function finishOnboarding() {
     refreshDashboard();
     showToast(`¡Bienvenido, ${ob.name.split(' ')[0]}!`, 'success');
   }, 400);
+  return true;
 }
 export const ScannerState = {
   html5Qr: null,
   scanning: false,
   selectedMeal: 'breakfast',
   processed: false,
+  pendingFood: null,
+  pendingFoodSource: null,
 };
 export function _scannerSetPhase(active) {
   [1, 2, 3].forEach(n => {
@@ -2157,7 +2344,7 @@ export function _registerScannedProduct(food, qty, sourceOverride) {
   _scannerSetStatus('Confirmar registro', false);
 }
 
-export function _executeRegisterScannedProduct(food, qty, sourceOverride) {
+export async function _executeRegisterScannedProduct(food, qty, sourceOverride) {
   qty = qty || 100;
   sourceOverride = sourceOverride || 'off';
   var ratio = qty / 100;
@@ -2178,12 +2365,18 @@ export function _executeRegisterScannedProduct(food, qty, sourceOverride) {
     sugar: parseFloat(((food.sugar_per_100g || 0) * ratio).toFixed(1)),
     source: sourceOverride,
   };
-  saveFoodLogLocal(logData);
+  try {
+    saveFoodLogLocal(logData);
+  } catch (error) {
+    showPersistenceFailure(error, 'guardar el producto escaneado');
+    return false;
+  }
   var mealNames = { breakfast: 'Desayuno', lunch: 'Almuerzo', dinner: 'Cena', snack: 'Snack' };
+  await closeScannerModal();
+  if (App.currentPage === 'home') await refreshDashboard();
+  if (App.currentPage === 'diary') await refreshDiary();
   showToast('📦 "' + (food.name || food.food_name) + '" añadido a ' + (mealNames[mealType] || 'Comida') + ' ✓', 'success', '📦');
-  closeScannerModal();
-  if (App.currentPage === 'home') refreshDashboard();
-  if (App.currentPage === 'diary') refreshDiary();
+  return true;
 }
 export async function exportData() {
     try {
@@ -2449,25 +2642,33 @@ export function getFoodIdentity(food) {
   return Utils.normalizeSearchText(food?.food_name || food?.name || '');
 }
 
-export function toggleFavorite(food) {
+export function toggleFavorite(food, updateUI) {
   if (!food) return;
   const nameToMatch = food.food_name || food.name;
   if (!nameToMatch) return;
 
-  let favs = getFavorites();
+  let favs;
+  try {
+    favs = getFavorites({ strict: true });
+  } catch (error) {
+    showPersistenceFailure(error, 'leer los favoritos');
+    return false;
+  }
   const normalizedName = getFoodIdentity(food);
   const existingIdx = favs.findIndex(f => getFoodIdentity(f) === normalizedName);
+  let nextFavorites;
+  let successMessage;
+  let successType;
 
   if (existingIdx !== -1) {
     // Ya existe → eliminar por nombre normalizado (consistente en toda la app)
-    favs.splice(existingIdx, 1);
-    LS.set('favorites', favs);
-    _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
-    showToast('Eliminado de favoritos', 'info');
+    nextFavorites = favs.filter((_, index) => index !== existingIdx);
+    successMessage = 'Eliminado de favoritos';
+    successType = 'info';
   } else {
     // No existe → agregar con datos completos
     const ratio = (food.defaultServingGrams || 100) / 100;
-    favs.push({
+    const nextFavorite = {
       id:       crypto.randomUUID(),
       food_name: nameToMatch,
       quantity:  food.quantity  ?? food.defaultServingGrams ?? 100,
@@ -2479,37 +2680,57 @@ export function toggleFavorite(food) {
       sugar:     food.sugar     !== undefined ? food.sugar     : parseFloat(((food.sugar_per_100g    || 0) * ratio).toFixed(1)),
       source:    food.source || 'manual',
       savedAt:   Date.now(),   // metadato para debug/ordenación futura
-    });
-    LS.set('favorites', favs);
-    _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
-    showToast('¡Guardado en favoritos!', 'success');
+    };
+    nextFavorites = [...favs, nextFavorite];
+    successMessage = '¡Guardado en favoritos!';
+    successType = 'success';
   }
+
+  try {
+    LS.setMany({ favorites: nextFavorites }, { remove: ['nt_favorites'] });
+  } catch (error) {
+    showPersistenceFailure(error, existingIdx !== -1 ? 'eliminar el favorito' : 'guardar el favorito');
+    return false;
+  }
+
+  _mealSignatures.clear(); /* P0: invalidar firmas del diario (estrella cambia) */
+  renderFavorites();
+  if (App.diaryLogs?.length) refreshDiary();
+  if (typeof updateUI === 'function') updateUI(nextFavorites);
+  showToast(successMessage, successType);
+  return true;
 }
 
 export async function addToMealFromFav(targetMeal) {
   if (!pendingFavToAdd) return;
   const fav = pendingFavToAdd;
-  saveFoodLogLocal({
-    id: crypto.randomUUID(),
-    user_id: App.user?.id || 'local',
-    date: Utils.toDateStr(App.currentDiaryDate),
-    meal_type: targetMeal,
-    food_name: fav.food_name,
-    quantity: fav.quantity,
-    calories: fav.calories,
-    protein: fav.protein,
-    carbs: fav.carbs,
-    fat: fav.fat,
-    fiber: fav.fiber,
-    sugar: fav.sugar,
-    source: fav.source || 'manual'
-  });
+  try {
+    saveFoodLogLocal({
+      id: crypto.randomUUID(),
+      user_id: App.user?.id || 'local',
+      date: Utils.toDateStr(App.currentDiaryDate),
+      meal_type: targetMeal,
+      food_name: fav.food_name,
+      quantity: fav.quantity,
+      calories: fav.calories,
+      protein: fav.protein,
+      carbs: fav.carbs,
+      fat: fav.fat,
+      fiber: fav.fiber,
+      sugar: fav.sugar,
+      source: fav.source || 'manual'
+    });
+  } catch (error) {
+    showPersistenceFailure(error, 'añadir el favorito al diario');
+    return false;
+  }
   document.getElementById('meal-selector-ui')?.classList.add('hidden');
   toggleFavoritesModal(false);
-  showToast(`${fav.food_name} añadido ✓`, 'success');
   pendingFavToAdd = null;
   await refreshDiary();
-  if (App.currentPage === 'home') refreshDashboard();
+  if (App.currentPage === 'home') await refreshDashboard();
+  showToast(`${fav.food_name} añadido ✓`, 'success');
+  return true;
 }
 
 export function toggleEditProfile() {
@@ -2522,14 +2743,20 @@ export function toggleEditProfile() {
 }
 
 export function applySavedDarkMode() {
-  const isDark = LS.get('dark_mode', false);
+  const isDark = readSecondary('dark_mode', false);
   document.body.classList.toggle('dark-theme', !!isDark);
 }
 
 export function toggleDarkMode() {
   const isDark = !document.body.classList.contains('dark-theme');
+  try {
+    LS.set('dark_mode', isDark);
+  } catch (error) {
+    showPersistenceFailure(error, 'cambiar el tema');
+    return false;
+  }
   document.body.classList.toggle('dark-theme', isDark);
-  LS.set('dark_mode', isDark);
+  return true;
 }
 
 /* ══════════════════════════════════════════════

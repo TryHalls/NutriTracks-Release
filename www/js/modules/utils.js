@@ -40,13 +40,16 @@ export function greetingByHour() {
 export function checkAndResetForNewDay() {
   const lastDate = LS.get('last_active_date', null);
   const todayStr = toDateStr(new Date());
-  if (lastDate && lastDate !== todayStr) {
+  const changedDay = lastDate && lastDate !== todayStr;
+  // La fecha activa se confirma antes de reflejar el cambio en memoria.
+  LS.set('last_active_date', todayStr);
+  if (changedDay) {
     // Los registros de comida y agua son por fecha → se reinician solos.
     // Actualizamos App.todayWater para reflejar el nuevo día.
     App.todayWater = 0;
     console.info('[App] ✦ Nuevo día detectado. Contadores reiniciados.');
   }
-  LS.set('last_active_date', todayStr);
+  return changedDay;
 }
 export function calculateBMR(gender, age, weight, height) {
   return gender === 'male'

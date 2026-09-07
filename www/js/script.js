@@ -7,28 +7,11 @@ import { LOCAL_FOOD_DB, SYNONYMS_MAP } from './modules/db.js';
 import * as Utils from './modules/utils.js';
 import * as API from './modules/api.js';
 import * as UI from './modules/ui.js';
+import { InitializationState, initializeApp, resetFromRecovery } from './modules/startup.js';
 
 /* ──────────────────────────────────────────────────────────────
    INICIALIZACIÓN
    ────────────────────────────────────────────────────────────── */
-async function initApp() {
-  UI.injectWaterPage();
-  UI.applySavedDarkMode();
-  Utils.checkAndResetForNewDay();
-  App.user = LS.getUser();
-
-  if (!App.user) {
-    document.getElementById('onboarding-screen').classList.remove('hidden');
-    document.getElementById('app').classList.add('hidden');
-  } else {
-    document.getElementById('onboarding-screen').classList.add('hidden');
-    document.getElementById('app').classList.remove('hidden');
-    UI.setGreeting();
-    UI.refreshDashboard();
-    API.loadAIConfig();
-  }
-}
-
 function handleURLParams() {
   const p = new URLSearchParams(window.location.search).get('page');
   if (p && ['diary', 'water', 'progress', 'profile'].includes(p)) {
@@ -36,9 +19,29 @@ function handleURLParams() {
   }
 }
 
+let initializationPromise;
+
 document.addEventListener('DOMContentLoaded', async () => {
-  await initApp();
-  handleURLParams();
+  initializationPromise = initializeApp({
+    app: App,
+    ls: LS,
+    utils: Utils,
+    api: API,
+    ui: UI,
+    documentRef: document,
+  });
+  const initializationState = await initializationPromise;
+
+  if (initializationState === InitializationState.RECOVERY_ERROR) {
+    document.getElementById('storage-recovery-reset')?.addEventListener('click', () => resetFromRecovery({
+      clearData: UI.clearDataConfirm,
+      reload: () => window.location.reload(),
+    }));
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  if (initializationState === InitializationState.READY) handleURLParams();
 
   /* ── Renderizar iconos Lucide ── */
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -157,7 +160,10 @@ window.saveAIConfig = API.saveAIConfig;
 window.analyzeWithAI = API.analyzeWithAI;
 
 // --- Event Listeners Migrated from Inline Onclick ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const initializationState = await initializationPromise;
+  if (initializationState === InitializationState.RECOVERY_ERROR) return;
+
   document.getElementById("evt_850a26").addEventListener("click", function() { selectGender(document.getElementById("evt_850a26")); });
   document.getElementById("evt_9e4ad4").addEventListener("click", function() { selectGender(document.getElementById("evt_9e4ad4")); });
   document.getElementById("evt_54d4f3").addEventListener("click", function() { nextStep(); });

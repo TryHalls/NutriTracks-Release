@@ -16,8 +16,15 @@ import { LOCAL_FOOD_DB } from './db.js';
 export const AI_CONFIG_OVERRIDE = {};
 export function getAIConfig() {
   if (AI_CONFIG_OVERRIDE.apiKey) return AI_CONFIG_OVERRIDE;
-  const saved = LS.get('ai_config', null);
-  return saved && saved.apiKey ? saved : null;
+  try {
+    const saved = LS.get('ai_config', null);
+    return saved && saved.apiKey ? saved : null;
+  } catch (error) {
+    // La configuración es secundaria para el arranque: se degrada a modo local
+    // sin confundir corrupción/indisponibilidad con una escritura exitosa.
+    console.error('[Persistencia] No se pudo leer la configuración de IA:', error);
+    return null;
+  }
 }
 
 export function loadAIConfig() {
@@ -34,9 +41,15 @@ export function saveAIConfig() {
   /* P0: proveedor fijo a gemini — se elimina referencia a openai */
   if (!key) { UI.showToast('Ingresa una API Key válida', 'error'); return; }
   /* P1: No loguear la key en consola */
-  LS.set('ai_config', { apiKey: key, provider: 'gemini' });
+  try {
+    LS.set('ai_config', { apiKey: key, provider: 'gemini' });
+  } catch (error) {
+    UI.showPersistenceFailure(error, 'guardar la configuración de IA');
+    return false;
+  }
   updateAIStatusBar(true);
   UI.showToast('✦ Configuración de Gemini guardada', 'ai', '✦');
+  return true;
 }
 
 export function updateAIStatusBar(hasKey) {
@@ -122,17 +135,30 @@ export async function processImageForAI(file) {
 }
 
 export function getCachedAIAnalysis(text) {
-  const cache = LS.get('ai_cache', {});
-  return cache[Utils.normalizeText(text)] || null;
+  try {
+    const cache = LS.get('ai_cache', {});
+    return cache[Utils.normalizeText(text)] || null;
+  } catch (error) {
+    console.warn('[AI cache] No se pudo leer la caché; se continuará sin ella.', error);
+    return null;
+  }
 }
 
 export function setCachedAIAnalysis(text, result) {
-  const key = Utils.normalizeText(text);
-  const cache = LS.get('ai_cache', {});
-  const keys = Object.keys(cache);
-  if (keys.length >= 200) delete cache[keys[0]];
-  cache[key] = { result, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
-  LS.set('ai_cache', cache);
+  try {
+    const key = Utils.normalizeText(text);
+    const cache = LS.get('ai_cache', {});
+    const keys = Object.keys(cache);
+    const nextCache = { ...cache };
+    if (keys.length >= 200) delete nextCache[keys[0]];
+    nextCache[key] = { result, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
+    LS.set('ai_cache', nextCache);
+    return true;
+  } catch (error) {
+    // La caché es solo una optimización: nunca invalida un resultado nutricional.
+    console.warn('[AI cache] No se pudo persistir la caché; se conserva el resultado principal.', error);
+    return false;
+  }
 }
 
 /* ── Activar modo offline ── */

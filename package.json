@@ -5,7 +5,7 @@
   "main": "sw.js",
   "type": "module",
   "scripts": {
-    "test": "node tests/backup.test.js"
+    "test": "node tests/run-tests.js"
   },
   "repository": {
     "type": "git",

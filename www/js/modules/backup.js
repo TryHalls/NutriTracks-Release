@@ -5,6 +5,8 @@
  * both layers before exposing a prepared map that can be committed.
  */
 
+import { isBackupStorageKey } from './storage-policy.js';
+
 export const BACKUP_LIMITS = Object.freeze({
   maxTextLength: 10 * 1024 * 1024,
   maxKeys: 5000,
@@ -261,9 +263,8 @@ function classifyKey(key) {
   return null;
 }
 
-export function isManagedStorageKey(key) {
-  return typeof key === 'string' && (FIXED_KEYS.has(key) || LEGACY_KEYS.has(key) || DYNAMIC_KEYS.some(({ pattern }) => pattern.test(key)));
-}
+// Nombre conservado por compatibilidad pública con la suite de backups.
+export const isManagedStorageKey = isBackupStorageKey;
 
 function parseInner(rawValue, key) {
   if (typeof rawValue !== 'string') fail(`El valor exterior de "${key}" debe ser un string.`);

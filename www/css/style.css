@@ -601,7 +601,8 @@ ul {
 /* ============================================================
    ONBOARDING
    ============================================================ */
-#onboarding-screen {
+#onboarding-screen,
+#storage-recovery-screen {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -614,8 +615,13 @@ ul {
   padding: 40px 20px 40px;
 }
 
-#onboarding-screen.hidden {
+#onboarding-screen.hidden,
+#storage-recovery-screen.hidden {
   display: none;
+}
+
+#storage-recovery-screen .step-panel {
+  display: block;
 }
 
 .onboarding-header {

@@ -35,10 +35,27 @@
 </head>
 <body>
 
+<!-- Estado conservador cuando la persistencia principal no puede leerse. -->
+<div id="storage-recovery-screen" class="hidden" role="alert" aria-labelledby="storage-recovery-title">
+  <div class="onboarding-header">
+    <div class="onboarding-logo"><i data-lucide="shield-alert"></i></div>
+    <h1 id="storage-recovery-title">No se pueden leer tus datos</h1>
+    <p>La aplicación se ha detenido para evitar mezclar o sobrescribir información local.</p>
+  </div>
+  <div class="step-panel active">
+    <div class="step-card">
+      <h2>Recuperación necesaria</h2>
+      <p class="step-subtitle" id="storage-recovery-detail">Tus datos locales siguen intactos.</p>
+      <p class="step-subtitle">Puedes recargar para reintentar. Si el problema continúa, el reset eliminará los datos únicamente después de tu confirmación.</p>
+      <button id="storage-recovery-reset" class="btn-primary" type="button">Eliminar todos los datos</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════
      ONBOARDING
 ══════════════════════════════════════════════ -->
-<div id="onboarding-screen">
+<div id="onboarding-screen" class="hidden">
 
   <div class="onboarding-header">
     <div class="onboarding-logo"><i data-lucide="leaf"></i></div>
@@ -1075,7 +1092,7 @@
 </div>
 
 <!-- App Script (single consolidated file) -->
-<script type="module" src="js/script.js?v=29.0"></script>
+<script type="module" src="js/script.js?v=30.0"></script>
 
 <!-- P1: El registro del Service Worker se realiza en js/script.js.
      El bloque duplicado que estaba aquí fue eliminado para evitar
