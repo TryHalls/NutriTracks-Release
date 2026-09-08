@@ -146,18 +146,19 @@ async function withDiaryEnvironment(callback, options = {}) {
   const originalSetMany = LS.setMany;
   const dom = createDiaryDocument(options);
   const storage = new Map();
+  const writes = [];
 
   globalThis.document = dom.document;
   globalThis.confirm = () => true;
   LS.get = (key, fallback = null) => storage.has(key) ? storage.get(key) : fallback;
-  LS.set = (key, value) => { storage.set(key, value); return true; };
+  LS.set = (key, value) => { writes.push({ key, value }); storage.set(key, value); return true; };
   LS.setMany = values => { Object.entries(values).forEach(([key, value]) => storage.set(key, value)); return true; };
   App.user = { id: 'u1' };
   App.currentPage = 'diary';
   App.diaryLogs = [];
 
   try {
-    return await callback({ ...dom, storage });
+    return await callback({ ...dom, storage, writes });
   } finally {
     LS.get = originalGet;
     LS.set = originalSet;
@@ -337,3 +338,39 @@ test('H08: un contenedor ausente no impide actualizar los demás', async () => {
   }, { missingMeal: 'lunch' });
 });
 
+test('H10: frontera FoodLog rechaza inválidos sin escribir y acepta Quick Add null', async () => {
+  await withDiaryEnvironment(async ({ storage }) => {
+    const date = '2026-09-01';
+    const key = `food_logs_${date}`;
+    for (const quantity of [-1, NaN, Infinity, '100']) {
+      assert.throws(() => UI.saveFoodLogLocal(food(`bad-${String(quantity)}`, 'lunch', 100, { date, quantity })));
+      assert.equal(storage.has(key), false);
+    }
+    const quick = food('quick', 'snack', 250, {
+      date, food_name: 'Entrada rápida', quantity: null,
+      protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, source: 'manual',
+    });
+    assert.equal(UI.saveFoodLogLocal(quick), true);
+    assert.equal(storage.get(key)[0].quantity, null);
+    assert.throws(() => UI.saveFoodLogLocal(food('null-normal', 'lunch', 100, { date, quantity: null })));
+    assert.equal(storage.get(key).length, 1);
+  });
+});
+
+test('H10: lote IA valida todo antes de una única escritura lógica', async () => {
+  await withDiaryEnvironment(async ({ storage, writes }) => {
+    const date = '2026-09-01';
+    const key = `food_logs_${date}`;
+    const legacy = food('legacy', 'breakfast', '120', { date, quantity: '100' });
+    storage.set(key, [legacy]);
+    const valid = food('ai-ok', 'lunch', 200, { date, source: 'ai', ai_input_mode: 'text' });
+    const invalid = food('ai-bad', 'lunch', 200, { date, source: 'ai', ai_input_mode: 'text', fat: Infinity });
+    assert.throws(() => UI.saveFoodLogsLocal([valid, invalid]));
+    assert.deepEqual(storage.get(key), [legacy]);
+    assert.equal(writes.length, 0);
+    assert.equal(UI.saveFoodLogsLocal([valid]), true);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].key, key);
+    assert.deepEqual(storage.get(key), [legacy, valid]);
+  });
+});

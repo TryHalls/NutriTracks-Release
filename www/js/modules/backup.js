@@ -6,6 +6,16 @@
  */
 
 import { isBackupStorageKey } from './storage-policy.js';
+import {
+  ACTIVITY_LEVELS,
+  AI_INPUT_MODES,
+  FOOD_SOURCES,
+  GENDERS,
+  GOALS,
+  MEAL_TYPES,
+  isValidDateString,
+  parseUserNumber,
+} from './validation.js';
 
 export const BACKUP_LIMITS = Object.freeze({
   maxTextLength: 10 * 1024 * 1024,
@@ -44,7 +54,7 @@ const FOOD_FIELDS = [
 ];
 const FAVORITE_FIELDS = [
   'id', 'food_name', 'quantity', 'calories', 'protein', 'carbs', 'fat',
-  'fiber', 'sugar', 'source', 'savedAt',
+  'fiber', 'sugar', 'source', 'ai_input_mode', 'savedAt',
 ];
 const AI_FOOD_FIELDS = [
   'alimento', 'cantidad_estimada', 'gramos_estimados', 'kcal',
@@ -111,18 +121,7 @@ function enumValue(value, values, path) {
 
 function validDate(value, path) {
   stringValue(value, path, { min: 10, max: 10 });
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) fail(`${path} debe usar el formato YYYY-MM-DD.`);
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    year < 1900 ||
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) fail(`${path} no es una fecha real.`);
+  if (!isValidDateString(value)) fail(`${path} debe ser una fecha real YYYY-MM-DD.`);
   return value;
 }
 
@@ -140,13 +139,13 @@ function validateUser(user) {
 
   stringValue(user.id, 'nt_user.id', { min: 1, max: 200 });
   stringValue(user.name, 'nt_user.name', { min: 1, max: 200 });
-  enumValue(user.gender, ['male', 'female'], 'nt_user.gender');
+  enumValue(user.gender, GENDERS, 'nt_user.gender');
   numberValue(user.age, 'nt_user.age', { min: 12, max: 100 });
   numberValue(user.weight, 'nt_user.weight', { min: 20, max: 300 });
   if (present.has('initial_weight')) numberValue(user.initial_weight, 'nt_user.initial_weight', { min: 20, max: 300 });
   numberValue(user.height, 'nt_user.height', { min: 100, max: 250 });
-  enumValue(user.activity_level, ['sedentary', 'light', 'moderate', 'active', 'very_active'], 'nt_user.activity_level');
-  enumValue(user.goal, ['lose_weight', 'maintain', 'gain_muscle'], 'nt_user.goal');
+  enumValue(user.activity_level, ACTIVITY_LEVELS, 'nt_user.activity_level');
+  enumValue(user.goal, GOALS, 'nt_user.goal');
   numberValue(user.bmr, 'nt_user.bmr', { min: 0, max: 10_000 });
   numberValue(user.daily_calories, 'nt_user.daily_calories', { min: 0, max: 20_000 });
   numberValue(user.protein_goal, 'nt_user.protein_goal', { min: 0, max: 2_000 });
@@ -159,8 +158,11 @@ function validateUser(user) {
   return normalized;
 }
 
-function validateFoodNumber(value, path) {
-  return numberValue(value, path, { min: 0, max: 1_000_000 });
+function validateHistoricalFoodNumber(value, path, { nullable = false } = {}) {
+  if (nullable && value === null) return value;
+  const parsed = parseUserNumber(value);
+  if (parsed === null || parsed < 0 || parsed > 1_000_000) fail(`${path} debe ser un número histórico completo dentro del rango permitido.`);
+  return value;
 }
 
 function validateFoodLog(log, index, keyDate) {
@@ -170,14 +172,24 @@ function validateFoodLog(log, index, keyDate) {
   stringValue(log.user_id, `${path}.user_id`, { min: 1, max: 200 });
   validDate(log.date, `${path}.date`);
   if (log.date !== keyDate) fail(`${path}.date no coincide con la fecha de su clave.`);
-  enumValue(log.meal_type, ['breakfast', 'lunch', 'dinner', 'snack'], `${path}.meal_type`);
+  enumValue(log.meal_type, MEAL_TYPES, `${path}.meal_type`);
   stringValue(log.food_name, `${path}.food_name`, { min: 1, max: 300 });
-  for (const field of ['quantity', 'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar']) {
-    validateFoodNumber(log[field], `${path}.${field}`);
+  if (log.quantity === null) {
+    if (log.source !== 'manual' || parseUserNumber(log.calories) <= 0 || !['protein', 'carbs', 'fat', 'fiber', 'sugar'].every(field => parseUserNumber(log[field]) === 0)) {
+      fail(`${path}.quantity null sólo es válida para Quick Add manual.`);
+    }
+  } else {
+    validateHistoricalFoodNumber(log.quantity, `${path}.quantity`);
   }
-  enumValue(log.source, ['local', 'off', 'manual', 'ai', 'hybrid'], `${path}.source`);
+  for (const field of ['calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar']) {
+    validateHistoricalFoodNumber(log[field], `${path}.${field}`, { nullable: log.quantity !== null });
+  }
+  enumValue(log.source, FOOD_SOURCES, `${path}.source`);
   if (Object.keys(log).includes('ai_input_mode')) {
-    enumValue(log.ai_input_mode, ['text', 'image', 'mixed'], `${path}.ai_input_mode`);
+    enumValue(log.ai_input_mode, AI_INPUT_MODES, `${path}.ai_input_mode`);
+    if (log.source === 'ai_label' && log.ai_input_mode !== 'image') fail(`${path}.ai_input_mode debe ser image para ai_label.`);
+  } else if (log.source === 'ai_label') {
+    fail(`${path}.ai_input_mode es obligatorio para ai_label.`);
   }
 }
 
@@ -202,13 +214,19 @@ function validateWeightLogs(value) {
 
 function validateFavorite(favorite, index) {
   const path = `nt_favorites[${index}]`;
-  exactFields(favorite, FAVORITE_FIELDS, path);
+  exactFields(favorite, FAVORITE_FIELDS, path, FAVORITE_FIELDS.filter(field => field !== 'ai_input_mode'));
   stringValue(favorite.id, `${path}.id`, { min: 1, max: 200 });
   stringValue(favorite.food_name, `${path}.food_name`, { min: 1, max: 300 });
   for (const field of ['quantity', 'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar']) {
-    validateFoodNumber(favorite[field], `${path}.${field}`);
+    validateHistoricalFoodNumber(favorite[field], `${path}.${field}`, { nullable: field !== 'quantity' });
   }
-  enumValue(favorite.source, ['local', 'off', 'manual', 'ai', 'hybrid'], `${path}.source`);
+  enumValue(favorite.source, FOOD_SOURCES, `${path}.source`);
+  if (Object.hasOwn(favorite, 'ai_input_mode')) {
+    enumValue(favorite.ai_input_mode, AI_INPUT_MODES, `${path}.ai_input_mode`);
+    if (favorite.source === 'ai_label' && favorite.ai_input_mode !== 'image') fail(`${path}.ai_input_mode debe ser image para ai_label.`);
+  } else if (favorite.source === 'ai_label') {
+    fail(`${path}.ai_input_mode es obligatorio para ai_label.`);
+  }
   numberValue(favorite.savedAt, `${path}.savedAt`, { min: 0, max: 8_640_000_000_000_000 });
 }
 
@@ -224,7 +242,7 @@ function validateAIFood(food, path) {
   stringValue(food.alimento, `${path}.alimento`, { min: 1, max: 300 });
   stringValue(food.cantidad_estimada, `${path}.cantidad_estimada`, { min: 1, max: 200 });
   for (const field of ['gramos_estimados', 'kcal', 'proteinas', 'carbohidratos', 'grasas']) {
-    validateFoodNumber(food[field], `${path}.${field}`);
+    validateHistoricalFoodNumber(food[field], `${path}.${field}`, { nullable: true });
   }
 }
 

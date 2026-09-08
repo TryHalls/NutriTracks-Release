@@ -1,5 +1,6 @@
 import { App, LS } from './state.js';
 import { LOCAL_FOOD_DB, SYNONYMS_MAP } from './db.js';
+import { parseExternalNumber, parseUserNumber } from './validation.js';
 
 export function getLocalDateString(date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -165,9 +166,11 @@ export function applySynonyms(text) {
  * "2 huevos y tocino con arepa" → ["2 huevos", "tocino", "arepa"]
  */
 export function splitByConnectors(text) {
-  return text
-    .split(/\s+y\s+|\s+con\s+|,\s*|\+\s*/i)
-    .map(t => t.trim())
+  const input = String(text || '');
+  const protectedCommas = input.replace(/(\d),(?=\d)/g, '$1\uE000');
+  return protectedCommas
+    .split(/\s+y\s+|\s+con\s+|,(?:\s*|$)|\s*\+\s*/i)
+    .map(part => part.replace(/\uE000/g, ',').trim())
     .filter(Boolean);
 }
 
@@ -217,7 +220,7 @@ export const DEFAULT_UNIT_GRAMS = {
   presa: 120, scoop: 30, tallo: 40, tajada: 150, mitad: 75,
 };
 
-export const QUANTITY_PATTERN = 'media docena|docena|tres cuartos|medio|media|cuarto|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+(?:[\\.,]\\d+)?';
+export const QUANTITY_PATTERN = 'media docena|docena|tres cuartos|medio|media|cuarto|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d{1,3}(?:\\.\\d{3})+|\\d+(?:[\\.,]\\d+)?';
 export const UNIT_PATTERN = 'kg|kilos?|g|grs?|gramos?|ml|mililitros?|l|lt|litros?|tazas?|vasos?|cucharadas?|cucharaditas?|rebanadas?|lonjas?|tiras?|unidades?|piezas?|latas?|filetes?|porciones?|rodajas?|presas?|scoops?|tallos?|tajadas?|mitad';
 
 export function normalizeText(text) {
@@ -235,8 +238,7 @@ export function prettyQty(value) {
 export function parseQuantityValue(raw) {
   const token = normalizeSearchText(raw);
   if (NUMBER_WORDS[token] != null) return NUMBER_WORDS[token];
-  const num = parseFloat(token.replace(',', '.'));
-  return Number.isFinite(num) ? num : 1;
+  return parseUserNumber(String(raw || '').trim());
 }
 
 export function canonicalUnit(raw) {
@@ -244,10 +246,15 @@ export function canonicalUnit(raw) {
 }
 
 export function convertEstimate(food, quantityRaw, unitRaw) {
-  const quantity = Math.max(0.25, parseQuantityValue(quantityRaw));
+  const quantity = parseQuantityValue(quantityRaw);
   const unit = canonicalUnit(unitRaw);
-  let grams = Math.round(food.defaultServingGrams || 100);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return { grams: null, label: 'Cantidad inválida', explicit: true, unit, convertible: false, needsReview: true, blocking: true };
+  }
+  let grams = food.defaultServingGrams || 100;
   let label = food.defaultServingLabel || `${grams}g`;
+  let needsReview = false;
+  let unitCount = null;
 
   if (unit === 'kg') { grams = quantity * 1000; label = `${prettyQty(quantity)}kg`; }
   else if (unit === 'g') { grams = quantity; label = `${prettyQty(quantity)}g`; }
@@ -255,18 +262,34 @@ export function convertEstimate(food, quantityRaw, unitRaw) {
   else if (unit === 'l') { grams = quantity * 1000; label = `${prettyQty(quantity)}L`; }
   else if (unit && food.measures?.[unit]) {
     grams = quantity * food.measures[unit];
+    unitCount = quantity;
     label = `${prettyQty(quantity)} ${quantity === 1 ? unit : unit + 's'}`;
   } else if (unit && DEFAULT_UNIT_GRAMS[unit]) {
     grams = quantity * DEFAULT_UNIT_GRAMS[unit];
     label = `${prettyQty(quantity)} ${unit}`;
+    unitCount = quantity;
+    needsReview = true;
   } else if (!unit && food.defaultUnitLabel && food.defaultServingGrams) {
     grams = quantity * food.defaultServingGrams;
+    unitCount = quantity;
     label = `${prettyQty(quantity)} ${food.defaultUnitLabel}`;
   } else {
     grams = quantity * (food.defaultServingGrams || 100);
-    label = `${Math.max(1, Math.round(grams))}g`;
+    label = `${prettyQty(grams)}g`;
+    needsReview = true;
   }
-  return { grams: Math.max(1, Math.round(grams)), label };
+  const roundedGrams = Math.round(grams * 100) / 100;
+  const external = parseExternalNumber(roundedGrams, 'quantity');
+  return {
+    grams: external.value,
+    label,
+    explicit: true,
+    unit,
+    unitCount,
+    convertible: external.value !== null,
+    needsReview: needsReview || external.needsReview,
+    blocking: external.value === null,
+  };
 }
 
 /* P0 Optimización: aliases normalizados cacheados por alimento (la base es
@@ -276,45 +299,85 @@ export function getFoodAliases(food) {
   if (!food || typeof food !== 'object') return [];
   let cached = _aliasCache.get(food);
   if (cached) return cached;
-  cached = Array.from(new Set([food.name, ...(food.aliases || [])].map(normalizeSearchText).filter(Boolean)));
+  const explicit = [food.name, ...(food.aliases || [])].map(normalizeSearchText).filter(Boolean);
+  const generated = [];
+  for (const alias of explicit) {
+    if (alias.includes(' ')) continue;
+    if (alias.endsWith('z')) generated.push(alias.slice(0, -1) + 'ces');
+    else if (/[aeiou]$/.test(alias)) generated.push(alias + 's');
+    else generated.push(alias + 'es');
+  }
+  cached = Array.from(new Set([...explicit, ...generated]));
   _aliasCache.set(food, cached);
   return cached;
 }
 
 export function estimateFoodPortion(normalizedText, food, totalMatches = 1) {
+  const parserText = String(normalizedText || '')
+    .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.,\s]/g, ' ').replace(/\s+/g, ' ').trim();
   const aliases = getFoodAliases(food).sort((a, b) => b.length - a.length);
 
   for (const alias of aliases) {
     const ap = alias.split(' ').map(escapeRegExp).join('\\s+');
     const beforeRx = new RegExp(`(?:^|\\b)(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})?\\s*(?:de\\s+)?${ap}(?=\\b|$)`);
     const afterRx = new RegExp(`${ap}\\s*(?:de\\s+)?(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})?(?=\\b|$)`);
-    const bm = beforeRx.exec(normalizedText);
+    const bm = beforeRx.exec(parserText);
     if (bm) return convertEstimate(food, bm[1], bm[2]);
-    const am = afterRx.exec(normalizedText);
+    const am = afterRx.exec(parserText);
     if (am) return convertEstimate(food, am[1], am[2]);
+
+    // A number plus an unsupported unit is explicit but cannot be converted.
+    const unknownRx = new RegExp(`(?:^|\\b)(${QUANTITY_PATTERN})\\s+([a-z]+)\\s+(?:de\\s+)?${ap}(?=\\b|$)`);
+    const unknown = unknownRx.exec(parserText);
+    if (unknown && !canonicalUnit(unknown[2])) {
+      return {
+        grams: null,
+        label: `${unknown[1]} ${unknown[2]}`,
+        explicit: true,
+        unit: unknown[2],
+        convertible: false,
+        needsReview: true,
+        blocking: true,
+        validationErrors: [{ field: 'quantity', code: 'UNKNOWN_UNIT', message: `Unidad no reconocida: ${unknown[2]}.` }],
+      };
+    }
   }
 
   if (totalMatches === 1) {
-    const gm = new RegExp(`(?:^|\\b)(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})(?=\\b|$)`).exec(normalizedText);
+    const gm = new RegExp(`(?:^|\\b)(${QUANTITY_PATTERN})\\s*(${UNIT_PATTERN})(?=\\b|$)`).exec(parserText);
     if (gm) return convertEstimate(food, gm[1], gm[2]);
   }
 
   return {
     grams: Math.max(1, Math.round(food.defaultServingGrams || 100)),
-    label: food.defaultServingLabel || `${Math.max(1, Math.round(food.defaultServingGrams || 100))}g`
+    label: food.defaultServingLabel || `${Math.max(1, Math.round(food.defaultServingGrams || 100))}g`,
+    explicit: false,
+    unit: '',
+    unitCount: null,
+    convertible: true,
+    needsReview: true,
+    blocking: false,
   };
 }
 
 export function buildAIFoodFromLocalFood(food, estimate) {
-  const ratio = estimate.grams / 100;
+  const ratio = estimate.grams === null ? null : estimate.grams / 100;
+  const round = value => Math.round(value * 10) / 10;
   return {
     alimento: food.name,
-    cantidad_estimada: estimate.label || `${estimate.grams}g`,
+    cantidad_estimada: estimate.label || (estimate.grams === null ? 'Cantidad por confirmar' : `${estimate.grams}g`),
     gramos_estimados: estimate.grams,
-    kcal: Math.round(food.calories_per_100g * ratio),
-    proteinas: parseFloat((food.protein_per_100g * ratio).toFixed(1)),
-    carbohidratos: parseFloat((food.carbs_per_100g * ratio).toFixed(1)),
-    grasas: parseFloat((food.fat_per_100g * ratio).toFixed(1)),
+    kcal: ratio === null ? null : Math.round(food.calories_per_100g * ratio),
+    proteinas: ratio === null ? null : round(food.protein_per_100g * ratio),
+    carbohidratos: ratio === null ? null : round(food.carbs_per_100g * ratio),
+    grasas: ratio === null ? null : round(food.fat_per_100g * ratio),
+    needsReview: !!estimate.needsReview,
+    quantityExplicit: !!estimate.explicit,
+    unit: estimate.unit || '',
+    unitCount: estimate.unitCount ?? null,
+    blocking: !!estimate.blocking,
+    validationErrors: estimate.validationErrors || [],
   };
 }
 
@@ -324,17 +387,19 @@ export function buildAIFoodFromLocalFood(food, estimate) {
 const _FOOD_ALIAS_INDEX = (() => {
   const list = [];
   LOCAL_FOOD_DB.forEach(food => {
+    const explicitAliases = new Set([food.name, ...(food.aliases || [])].map(normalizeSearchText));
     getFoodAliases(food).forEach(alias => {
       const ap = alias.split(' ').map(escapeRegExp).join('\\s+');
       list.push({
         food,
         alias,
         len: alias.length,
+        explicitAlias: explicitAliases.has(alias),
         rx: new RegExp(`(?:^|\\b)${ap}(?=\\b|$)`, 'g'),
       });
     });
   });
-  return list.sort((a, b) => b.len - a.len);
+  return list.sort((a, b) => Number(b.explicitAlias) - Number(a.explicitAlias) || b.len - a.len);
 })();
 
 /**
@@ -349,7 +414,7 @@ export function findLocalFoodMentions(text) {
   if (!normalized) return [];
 
   const candidates = [];
-  const tokens = normalized.split(' ').filter(t => t.length > 3);
+  const tokenMatches = [...normalized.matchAll(/\b[a-z0-9]+\b/g)].filter(match => match[0].length > 3);
   const matchedTokens = new Set();
 
   // 1. Match exacto / substring con regex precompiladas
@@ -368,26 +433,27 @@ export function findLocalFoodMentions(text) {
   }
 
   // 2. Fuzzy matching: solo para tokens que no coincidieron exactamente
-  if (tokens.length) {
+  if (tokenMatches.length) {
     for (let fi = 0; fi < LOCAL_FOOD_DB.length; fi++) {
       const food = LOCAL_FOOD_DB[fi];
       const aliases = getFoodAliases(food); // cacheado (WeakMap)
-      for (let ti = 0; ti < tokens.length; ti++) {
-        const token = tokens[ti];
-        if (matchedTokens.has(token)) continue;
+      for (let ti = 0; ti < tokenMatches.length; ti++) {
+        const tokenMatch = tokenMatches[ti];
+        const token = tokenMatch[0];
+        if (matchedTokens.has(`${tokenMatch.index}:${token}`)) continue;
         for (let ai = 0; ai < aliases.length; ai++) {
           const alias = aliases[ai];
           // Solo considerar alias de 1 palabra para fuzzy individual
           if (alias.includes(' ')) continue;
           const sim = fuzzyScore(token, alias);
           if (sim > 0.75 && sim < 1.0) { // < 1.0 para no duplicar exactos
-            const pos = normalized.indexOf(token);
+            const pos = tokenMatch.index;
             if (pos >= 0) {
               candidates.push({
                 food, alias: token, start: pos, end: pos + token.length,
-                len: alias.length, score: sim,
+                len: alias.length, score: sim, fuzzy: true,
               });
-              matchedTokens.add(token);
+              matchedTokens.add(`${pos}:${token}`);
               break; // 1 candidato fuzzy por (token, alimento)
             }
           }
@@ -397,13 +463,12 @@ export function findLocalFoodMentions(text) {
   }
 
   // Ordenar: mayor longitud de alias primero, luego mayor score
-  candidates.sort((a, b) => b.len - a.len || b.score - a.score || a.start - b.start);
+  candidates.sort((a, b) => b.score - a.score || b.len - a.len || a.start - b.start);
 
   const selected = [];
   candidates.forEach(candidate => {
     const overlaps = selected.some(item => !(candidate.end <= item.start || candidate.start >= item.end));
-    const sameFood = selected.some(item => item.food.name === candidate.food.name);
-    if (!overlaps && !sameFood) selected.push(candidate);
+    if (!overlaps) selected.push(candidate);
   });
 
   return selected.sort((a, b) => a.start - b.start);
@@ -416,52 +481,70 @@ export function findLocalFoodMentions(text) {
  *   3. Si no hay matches en sub-frase, busca en el texto completo
  */
 export function smartOfflineAnalyzeText(text) {
-  const normalized = normalizeSearchText(text);
-  if (!normalized) return null;
+  const originalText = String(text || '').trim();
+  if (!originalText) return null;
 
-  // Intento 1: analizar texto completo
-  const mentionsFull = findLocalFoodMentions(normalized);
+  const occurrences = [];
+  for (const segment of splitByConnectors(originalText)) {
+    const linguisticText = applySynonyms(normalizeSearchText(segment));
+    const mentions = findLocalFoodMentions(linguisticText);
+    for (const mention of mentions) {
+      const estimate = estimateFoodPortion(segment, mention.food, mentions.length);
+      if (mention.fuzzy) estimate.needsReview = true;
+      if (mentions.length > 1 && estimate.explicit) estimate.needsReview = true;
+      occurrences.push({
+        food: mention.food,
+        segment,
+        mention,
+        estimate,
+        candidate: {
+          ...buildAIFoodFromLocalFood(mention.food, estimate),
+          originalText,
+          needsReview: !!estimate.needsReview || !!mention.fuzzy,
+        },
+      });
+    }
+  }
+  if (!occurrences.length) return null;
 
-  // Intento 2: dividir por conectores y analizar cada fragmento
-  const segments = splitByConnectors(normalized);
-  const mentionsSegmented = [];
-  const seenFoods = new Set();
+  const output = [];
+  const consumed = new Set();
+  for (let index = 0; index < occurrences.length; index += 1) {
+    if (consumed.has(index)) continue;
+    const current = occurrences[index];
+    const group = occurrences.map((item, itemIndex) => ({ item, itemIndex })).filter(({ item, itemIndex }) => (
+      itemIndex >= index && !consumed.has(itemIndex) &&
+      item.food.name === current.food.name && item.estimate.explicit && current.estimate.explicit &&
+      item.estimate.convertible && current.estimate.convertible &&
+      !item.estimate.needsReview && !current.estimate.needsReview &&
+      !item.estimate.blocking && !current.estimate.blocking
+    ));
 
-  segments.forEach(seg => {
-    const segMentions = findLocalFoodMentions(seg);
-    segMentions.forEach(m => {
-      if (!seenFoods.has(m.food.name)) {
-        seenFoods.add(m.food.name);
-        // Estimar porción en el segmento (más preciso)
-        const estimate = estimateFoodPortion(
-          applySynonyms(normalizeSearchText(seg)),
-          m.food, segMentions.length
-        );
-        mentionsSegmented.push({ food: m.food, estimate });
-      }
-    });
-  });
-
-  // Si el análisis segmentado encontró más alimentos, usarlo
-  const useSegmented = mentionsSegmented.length >= mentionsFull.length;
-
-  if (useSegmented && mentionsSegmented.length > 0) {
-    return {
-      alimentos: mentionsSegmented.map(({ food, estimate }) =>
-        buildAIFoodFromLocalFood(food, estimate)
-      )
-    };
+    if (group.length > 1) {
+      group.forEach(({ itemIndex }) => consumed.add(itemIndex));
+      const grams = Math.round(group.reduce((sum, { item }) => sum + item.estimate.grams, 0) * 100) / 100;
+      const allUnitCounts = group.every(({ item }) => item.estimate.unitCount !== null);
+      const unitCount = allUnitCounts
+        ? group.reduce((sum, { item }) => sum + item.estimate.unitCount, 0)
+        : null;
+      const consolidated = buildAIFoodFromLocalFood(current.food, {
+        grams,
+        label: unitCount === null ? `${prettyQty(grams)}g` : `${prettyQty(unitCount)} unidades`,
+        explicit: true,
+        unit: current.estimate.unit,
+        unitCount,
+        convertible: true,
+        needsReview: false,
+        blocking: false,
+      });
+      output.push({ ...consolidated, originalText, consolidatedOccurrences: group.length });
+    } else {
+      consumed.add(index);
+      output.push(current.candidate);
+    }
   }
 
-  if (mentionsFull.length > 0) {
-    return {
-      alimentos: mentionsFull.map(m =>
-        buildAIFoodFromLocalFood(m.food, estimateFoodPortion(normalized, m.food, mentionsFull.length))
-      )
-    };
-  }
-
-  return null;
+  return { originalText, alimentos: output };
 }
 
 export function extractFoodKeywords(text) {
@@ -471,20 +554,42 @@ export function extractFoodKeywords(text) {
 }
 
 export function round1(value) {
-  return parseFloat((Number(value) || 0).toFixed(1));
+  const parsed = typeof value === 'number' ? value : parseUserNumber(value);
+  return Number.isFinite(parsed) ? Math.round(parsed * 10) / 10 : null;
 }
 
 export function sanitizeAIFoodItem(a = {}) {
-  const grams = Math.max(0, Math.round(Number(a.gramos_estimados) || 0));
-  const qty = String(a.cantidad_estimada || (grams ? `${grams}g` : 'Cantidad por confirmar'));
+  const quantity = parseExternalNumber(a.gramos_estimados, 'quantity');
+  const calories = parseExternalNumber(a.kcal, 'calories');
+  const protein = parseExternalNumber(a.proteinas, 'protein');
+  const carbs = parseExternalNumber(a.carbohidratos, 'carbs');
+  const fat = parseExternalNumber(a.grasas, 'fat');
+  const parsedFields = [quantity, calories, protein, carbs, fat];
+  const inheritedErrors = Array.isArray(a.validationErrors) ? a.validationErrors : [];
+  const validationErrors = [...inheritedErrors, ...parsedFields.map(field => field.error).filter(Boolean)];
+  const name = typeof a.alimento === 'string' ? a.alimento.trim() : '';
+  if (!name) validationErrors.push({ field: 'food_name', code: 'REQUIRED', message: 'Falta el nombre del alimento.' });
+  if (quantity.value === null) validationErrors.push({ field: 'quantity', code: 'REQUIRED', message: 'Falta una cantidad válida.' });
+  const needsReview = Boolean(a.needsReview) || parsedFields.some(field => field.needsReview) || validationErrors.length > 0;
+  const qty = typeof a.cantidad_estimada === 'string' && a.cantidad_estimada.trim()
+    ? a.cantidad_estimada.trim()
+    : quantity.value === null ? 'Cantidad por confirmar' : `${quantity.value}g`;
   return {
-    alimento: String(a.alimento || 'Alimento desconocido').trim() || 'Alimento desconocido',
+    alimento: name,
     cantidad_estimada: qty,
-    gramos_estimados: grams,
-    kcal: Math.max(0, Math.round(Number(a.kcal) || 0)),
-    proteinas: round1(a.proteinas),
-    carbohidratos: round1(a.carbohidratos),
-    grasas: round1(a.grasas),
+    gramos_estimados: quantity.value,
+    kcal: calories.value,
+    proteinas: protein.value === null ? null : round1(protein.value),
+    carbohidratos: carbs.value === null ? null : round1(carbs.value),
+    grasas: fat.value === null ? null : round1(fat.value),
+    needsReview,
+    blocking: Boolean(a.blocking) || validationErrors.some(error => error.field === 'food_name' || error.field === 'quantity'),
+    validationErrors,
+    ...(Object.hasOwn(a, 'originalText') ? { originalText: a.originalText } : {}),
+    ...(Object.hasOwn(a, 'quantityExplicit') ? { quantityExplicit: Boolean(a.quantityExplicit) } : {}),
+    ...(Object.hasOwn(a, 'unit') ? { unit: a.unit } : {}),
+    ...(Object.hasOwn(a, 'unitCount') ? { unitCount: a.unitCount } : {}),
+    ...(Object.hasOwn(a, 'consolidatedOccurrences') ? { consolidatedOccurrences: a.consolidatedOccurrences } : {}),
   };
 }
 

@@ -2,6 +2,7 @@ import { App, LS } from './state.js';
 import * as Utils from './utils.js';
 import * as UI from './ui.js';
 import { LOCAL_FOOD_DB } from './db.js';
+import { parseExternalNumber } from './validation.js';
 
 /*
    Hardcode para dev (descomenta y pon tu clave):
@@ -151,7 +152,18 @@ export function setCachedAIAnalysis(text, result) {
     const keys = Object.keys(cache);
     const nextCache = { ...cache };
     if (keys.length >= 200) delete nextCache[keys[0]];
-    nextCache[key] = { result, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
+    const cacheResult = {
+      alimentos: (result?.alimentos || []).map(food => ({
+        alimento: food.alimento,
+        cantidad_estimada: food.cantidad_estimada,
+        gramos_estimados: food.gramos_estimados,
+        kcal: food.kcal,
+        proteinas: food.proteinas,
+        carbohidratos: food.carbohidratos,
+        grasas: food.grasas,
+      })),
+    };
+    nextCache[key] = { result: cacheResult, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
     LS.set('ai_cache', nextCache);
     return true;
   } catch (error) {
@@ -420,10 +432,11 @@ export async function fallbackToOpenFoodFacts(text) {
       alimento: f.name,
       cantidad_estimada: '100g',
       gramos_estimados: 100,
-      kcal: Math.round(f.calories_per_100g),
-      proteinas: parseFloat(f.protein_per_100g.toFixed(1)),
-      carbohidratos: parseFloat(f.carbs_per_100g.toFixed(1)),
-      grasas: parseFloat(f.fat_per_100g.toFixed(1)),
+      kcal: f.calories_per_100g,
+      proteinas: f.protein_per_100g,
+      carbohidratos: f.carbs_per_100g,
+      grasas: f.fat_per_100g,
+      needsReview: Boolean(f.needsReview),
     }]
   };
 }
@@ -561,21 +574,29 @@ export async function searchOpenFoodFactsRemote(query, signal) {
 
     return prods
       .map(p => {
-        const kcal = Number(
-          p.nutriments?.['energy-kcal_100g'] ??
-          (p.nutriments?.energy_100g ? p.nutriments.energy_100g / 4.184 : 0)
-        );
+        const directEnergy = parseExternalNumber(p.nutriments?.['energy-kcal_100g'], 'calories');
+        const joules = parseExternalNumber(p.nutriments?.energy_100g, 'calories');
+        const kcal = directEnergy.value !== null
+          ? directEnergy
+          : joules.value === null ? joules : parseExternalNumber(joules.value / 4.184, 'calories');
         if (!p.product_name && !p.product_name_es) return null;
-        if (!Number.isFinite(kcal) || kcal <= 0) return null;
+        if (kcal.error || kcal.value === null) return null;
+        const protein = parseExternalNumber(p.nutriments?.proteins_100g, 'protein');
+        const carbs = parseExternalNumber(p.nutriments?.carbohydrates_100g, 'carbs');
+        const fat = parseExternalNumber(p.nutriments?.fat_100g, 'fat');
+        const fiber = parseExternalNumber(p.nutriments?.fiber_100g, 'fiber');
+        const sugar = parseExternalNumber(p.nutriments?.sugars_100g, 'sugar');
+        const fields = [kcal, protein, carbs, fat, fiber, sugar];
         return {
           name: p.product_name_es || p.product_name,
           category: p.brands || 'Open Food Facts ES',
-          calories_per_100g: Math.round(kcal),
-          protein_per_100g: parseFloat((Number(p.nutriments?.proteins_100g) || 0).toFixed(1)),
-          carbs_per_100g: parseFloat((Number(p.nutriments?.carbohydrates_100g) || 0).toFixed(1)),
-          fat_per_100g: parseFloat((Number(p.nutriments?.fat_100g) || 0).toFixed(1)),
-          fiber_per_100g: parseFloat((Number(p.nutriments?.fiber_100g) || 0).toFixed(1)),
-          sugar_per_100g: parseFloat((Number(p.nutriments?.sugars_100g) || 0).toFixed(1)),
+          calories_per_100g: kcal.value,
+          protein_per_100g: protein.value,
+          carbs_per_100g: carbs.value,
+          fat_per_100g: fat.value,
+          fiber_per_100g: fiber.value,
+          sugar_per_100g: sugar.value,
+          needsReview: fields.some(field => field.needsReview || field.error),
           source: 'off',
         };
       })
@@ -679,19 +700,29 @@ export async function _queryOpenFoodFactsByBarcode(barcode) {
     if (data.status === 1 && data.product) {
       var p = data.product;
       var n = p.nutriments || {};
-      var kcal = Number(n['energy-kcal_100g'] || (n.energy_100g ? n.energy_100g / 4.184 : 0));
+      var directKcal = parseExternalNumber(n['energy-kcal_100g'], 'calories');
+      var energyKj = parseExternalNumber(n.energy_100g, 'calories');
+      var kcal = directKcal.value !== null
+        ? directKcal
+        : energyKj.value === null ? energyKj : parseExternalNumber(energyKj.value / 4.184, 'calories');
       var name = p.product_name_es || p.product_name || 'Producto escaneado';
-      if (kcal > 0) {
+      if (kcal.value !== null && !kcal.error) {
+        var protein = parseExternalNumber(n.proteins_100g, 'protein');
+        var carbs = parseExternalNumber(n.carbohydrates_100g, 'carbs');
+        var fat = parseExternalNumber(n.fat_100g, 'fat');
+        var fiber = parseExternalNumber(n.fiber_100g, 'fiber');
+        var sugar = parseExternalNumber(n.sugars_100g, 'sugar');
         UI._scannerSetPhase(3);
         UI._scannerSetStatus('\u2705 "' + name + '" encontrado', false);
         UI._registerScannedProduct({
           name: name,
-          calories_per_100g: Math.round(kcal),
-          protein_per_100g: parseFloat((Number(n.proteins_100g) || 0).toFixed(1)),
-          carbs_per_100g: parseFloat((Number(n.carbohydrates_100g) || 0).toFixed(1)),
-          fat_per_100g: parseFloat((Number(n.fat_100g) || 0).toFixed(1)),
-          fiber_per_100g: parseFloat((Number(n.fiber_100g) || 0).toFixed(1)),
-          sugar_per_100g: parseFloat((Number(n.sugars_100g) || 0).toFixed(1)),
+          calories_per_100g: kcal.value,
+          protein_per_100g: protein.value,
+          carbs_per_100g: carbs.value,
+          fat_per_100g: fat.value,
+          fiber_per_100g: fiber.value,
+          sugar_per_100g: sugar.value,
+          needsReview: [kcal, protein, carbs, fat, fiber, sugar].some(field => field.needsReview || field.error),
         });
         return;
       }
@@ -716,7 +747,7 @@ export async function _analyzeLabelWithGemini(imageFile) {
   }
   try {
     var processed = await processImageForAI(imageFile);
-    var systemPrompt = 'Extrae los datos nutricionales de esta etiqueta y responde SOLO un JSON valido EXACTAMENTE con este formato:\n{"name":"Nombre del producto","calories":123,"protein":4.5,"carbs":20.1,"fat":2.3}\nNo agregues markdown, comentarios, ni texto fuera del JSON. Si falta un valor usa 0.';
+    var systemPrompt = 'Extrae los datos nutricionales de esta etiqueta y responde SOLO un JSON valido EXACTAMENTE con este formato:\n{"name":"Nombre del producto","calories":123,"protein":4.5,"carbs":20.1,"fat":2.3}\nNo agregues markdown, comentarios, ni texto fuera del JSON. Si falta un valor usa null.';
     var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, 15000);
@@ -755,22 +786,23 @@ export async function _analyzeLabelWithGemini(imageFile) {
       data.candidates[0].content.parts[0].text) ? data.candidates[0].content.parts[0].text.trim() : '';
     if (!rawText) throw new Error('Gemini no devolvio texto');
     var parsed = JSON.parse(rawText);
-    var name = String(parsed.name || 'Producto escaneado').trim();
-    var calories = Math.max(0, Math.round(Number(parsed.calories) || 0));
-    var protein = parseFloat((Number(parsed.protein) || 0).toFixed(1));
-    var carbs = parseFloat((Number(parsed.carbs) || 0).toFixed(1));
-    var fat = parseFloat((Number(parsed.fat) || 0).toFixed(1));
-    if (!calories) throw new Error('No se encontraron calorias en la etiqueta');
+    var name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+    var calories = parseExternalNumber(parsed.calories, 'calories');
+    var protein = parseExternalNumber(parsed.protein, 'protein');
+    var carbs = parseExternalNumber(parsed.carbs, 'carbs');
+    var fat = parseExternalNumber(parsed.fat, 'fat');
+    if (!name || calories.value === null || calories.error) throw new Error('No se encontraron calorias válidas en la etiqueta');
     UI._scannerSetPhase(3);
     UI._scannerSetStatus('\u2756 "' + name + '" analizado con IA', false);
     UI._registerScannedProduct({
       name: name,
-      calories_per_100g: calories,
-      protein_per_100g: protein,
-      carbs_per_100g: carbs,
-      fat_per_100g: fat,
-      fiber_per_100g: 0,
-      sugar_per_100g: 0,
+      calories_per_100g: calories.value,
+      protein_per_100g: protein.value,
+      carbs_per_100g: carbs.value,
+      fat_per_100g: fat.value,
+      fiber_per_100g: null,
+      sugar_per_100g: null,
+      needsReview: [calories, protein, carbs, fat].some(field => field.needsReview || field.error),
     }, 100, 'ai_label');
   } catch (err) {
     console.error('[Scanner][Gemini]', err);

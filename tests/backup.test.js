@@ -225,9 +225,31 @@ test('food logs without ai_input_mode remain valid', () => {
   assert.equal(Object.hasOwn(JSON.parse(prepared['nt_food_logs_2026-09-07'])[0], 'ai_input_mode'), false);
 });
 
+test('roundtrip H10 preserva Quick Add, ai_label, nulls y números legacy', () => {
+  const quick = {
+    ...food, id: 'quick', food_name: 'Entrada rápida', quantity: null, calories: 250,
+    protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, source: 'manual',
+  };
+  const label = { ...food, id: 'label', source: 'ai_label', ai_input_mode: 'image', protein: null, fiber: null };
+  const legacyZero = { ...food, id: 'legacy-zero', quantity: 0 };
+  const legacyStrings = { ...food, id: 'legacy-strings', quantity: '150', calories: '195', protein: '4,5' };
+  const source = new MemoryStorage(validBackup({
+    'nt_food_logs_2026-09-07': raw([quick, label, legacyZero, legacyStrings]),
+  }));
+  const destination = new MemoryStorage();
+  restoreBackupText(destination, serializeFilteredBackup(source));
+  assert.deepEqual(JSON.parse(destination.getItem('nt_food_logs_2026-09-07')), [quick, label, legacyZero, legacyStrings]);
+});
+
 test('unsupported ai_input_mode is rejected without mutating storage', () => {
   assertInvalidWithoutMutation(validBackup({
     'nt_food_logs_2026-09-07': raw([{ ...food, source: 'ai', ai_input_mode: 'video' }]),
+  }));
+});
+
+test('ai_label without image mode is rejected without mutating storage', () => {
+  assertInvalidWithoutMutation(validBackup({
+    'nt_food_logs_2026-09-07': raw([{ ...food, source: 'ai_label' }]),
   }));
 });
 

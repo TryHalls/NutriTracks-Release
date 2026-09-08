@@ -3,6 +3,18 @@ import * as Utils from './utils.js';
 import * as API from './api.js';
 import { LOCAL_FOOD_DB } from './db.js';
 import {
+  FOOD_SOURCES,
+  ValidationError,
+  isLegacyQuickAdd,
+  isQuickAdd,
+  parseExternalNumber,
+  parseUserNumber,
+  validateFoodLog,
+  validateProfile,
+  validateWater,
+  validateWeight,
+} from './validation.js';
+import {
   BackupError,
   commitPreparedBackup,
   parseAndPrepareBackup,
@@ -358,8 +370,9 @@ export function updateAIResultsSummary() {
     listEl.appendChild(item);
   });
 
+  const candidateValue = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
   const totals = alimentos.reduce(
-    (acc, a) => ({ kcal: acc.kcal + (Number(a.kcal) || 0), prot: acc.prot + (Number(a.proteinas) || 0), carbs: acc.carbs + (Number(a.carbohidratos) || 0), fat: acc.fat + (Number(a.grasas) || 0) }),
+    (acc, a) => ({ kcal: acc.kcal + candidateValue(a.kcal), prot: acc.prot + candidateValue(a.proteinas), carbs: acc.carbs + candidateValue(a.carbohidratos), fat: acc.fat + candidateValue(a.grasas) }),
     { kcal: 0, prot: 0, carbs: 0, fat: 0 }
   );
 
@@ -392,10 +405,10 @@ export function renderAIFoodEditSummary() {
   const foods = App._pendingAIFoods || [];
   const totals = foods.reduce(
     (acc, food) => ({
-      kcal: acc.kcal + (Number(food.kcal) || 0),
-      prot: acc.prot + (Number(food.proteinas) || 0),
-      carbs: acc.carbs + (Number(food.carbohidratos) || 0),
-      fat: acc.fat + (Number(food.grasas) || 0),
+      kcal: acc.kcal + (typeof food.kcal === 'number' && Number.isFinite(food.kcal) ? food.kcal : 0),
+      prot: acc.prot + (typeof food.proteinas === 'number' && Number.isFinite(food.proteinas) ? food.proteinas : 0),
+      carbs: acc.carbs + (typeof food.carbohidratos === 'number' && Number.isFinite(food.carbohidratos) ? food.carbohidratos : 0),
+      fat: acc.fat + (typeof food.grasas === 'number' && Number.isFinite(food.grasas) ? food.grasas : 0),
     }),
     { kcal: 0, prot: 0, carbs: 0, fat: 0 }
   );
@@ -439,17 +452,17 @@ export function persistCurrentAIFoodFromForm() {
   if (!current) return null;
 
   const name = document.getElementById('ai-edit-name')?.value.trim();
-  const grams = Math.max(0, Math.round(Number(document.getElementById('ai-edit-grams')?.value) || 0));
-  const kcal = Math.max(0, Math.round(Number(document.getElementById('ai-edit-kcal')?.value) || 0));
+  const grams = parseUserNumber(document.getElementById('ai-edit-grams')?.value);
+  const kcal = parseUserNumber(document.getElementById('ai-edit-kcal')?.value);
   const prot = Utils.round1(document.getElementById('ai-edit-protein')?.value);
   const carbs = Utils.round1(document.getElementById('ai-edit-carbs')?.value);
   const fat = Utils.round1(document.getElementById('ai-edit-fat')?.value);
 
   const updated = {
     ...current,
-    alimento: name || current.alimento,
+    alimento: name || '',
     gramos_estimados: grams,
-    cantidad_estimada: grams > 0 ? `${grams}g` : 'Cantidad por confirmar',
+    cantidad_estimada: grams !== null && grams > 0 ? `${grams}g` : 'Cantidad por confirmar',
     kcal,
     proteinas: prot,
     carbohidratos: carbs,
@@ -517,6 +530,9 @@ export async function saveEditedAIFoods() {
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
 
   // 1. Construir TODOS los logs en un array
+  const source = App.lastAISourceMode === 'offline'
+    ? 'local'
+    : App.lastAISourceMode === 'hybrid' ? 'hybrid' : 'ai';
   const newLogs = foods.map(a => ({
     id: crypto.randomUUID(),
     user_id: App.user?.id || 'local',
@@ -528,31 +544,13 @@ export async function saveEditedAIFoods() {
     protein: a.proteinas,
     carbs: a.carbohidratos,
     fat: a.grasas,
-    fiber: 0,
-    sugar: 0,
-    source: 'ai',
-    ai_input_mode: App.lastAIInputMode,
+    fiber: null,
+    sugar: null,
+    source,
+    ...((source === 'ai' || source === 'hybrid') ? { ai_input_mode: App.lastAIInputMode } : {}),
   }));
-
-  // 2. Obtener los logs existentes para este día
-  const key = 'food_logs_' + dateStr;
-  let existing;
   try {
-    existing = LS.get(key, []);
-  } catch (error) {
-    showPersistenceFailure(error, 'leer el diario antes de guardar');
-    return false;
-  }
-
-  // 3. Crear un Set con los IDs de los nuevos logs (para evitar duplicados)
-  const ids = new Set(newLogs.map(l => l.id));
-
-  // 4. Filtrar los existentes que no estén en el nuevo lote
-  const filtered = existing.filter(l => !ids.has(l.id));
-
-  // 5. Guardar TODO en UNA sola operación
-  try {
-    LS.set(key, [...filtered, ...newLogs]);
+    saveFoodLogsLocal(newLogs);
   } catch (error) {
     showPersistenceFailure(error, 'guardar los alimentos');
     return false;
@@ -586,13 +584,15 @@ export function setupAIEditorListeners() {
     // 1. Guardar los valores "base" de referencia si no existen
     if (current._base_grams === undefined) {
       current._base_grams = current.gramos_estimados || 1;
-      current._base_kcal = current.kcal || 0;
-      current._base_prot = current.proteinas || 0;
-      current._base_carbs = current.carbohidratos || 0;
-      current._base_fat = current.grasas || 0;
+      current._base_kcal = current.kcal;
+      current._base_prot = current.proteinas;
+      current._base_carbs = current.carbohidratos;
+      current._base_fat = current.grasas;
     }
 
-    const newGrams = Math.max(0, Math.round(Number(e.target.value) || 0));
+    const parsedGrams = parseUserNumber(e.target.value);
+    if (parsedGrams === null || parsedGrams < 0) return;
+    const newGrams = parsedGrams;
     
     // 2. Recalcular proporciones si la base es mayor a 0
     if (current._base_grams > 0) {
@@ -602,10 +602,10 @@ export function setupAIEditorListeners() {
       const carbsEl = document.getElementById('ai-edit-carbs');
       const fatEl = document.getElementById('ai-edit-fat');
 
-      if (kcalEl) kcalEl.value = Math.max(0, Math.round(current._base_kcal * ratio));
-      if (protEl) protEl.value = Utils.round1(current._base_prot * ratio);
-      if (carbsEl) carbsEl.value = Utils.round1(current._base_carbs * ratio);
-      if (fatEl) fatEl.value = Utils.round1(current._base_fat * ratio);
+      if (kcalEl) kcalEl.value = Number.isFinite(current._base_kcal) ? Math.max(0, Math.round(current._base_kcal * ratio)) : '';
+      if (protEl) protEl.value = Number.isFinite(current._base_prot) ? Utils.round1(current._base_prot * ratio) : '';
+      if (carbsEl) carbsEl.value = Number.isFinite(current._base_carbs) ? Utils.round1(current._base_carbs * ratio) : '';
+      if (fatEl) fatEl.value = Number.isFinite(current._base_fat) ? Utils.round1(current._base_fat * ratio) : '';
     }
 
     // 3. Persistir en el estado global (debounced: el recálculo de campos es inmediato,
@@ -624,10 +624,10 @@ export function setupAIEditorListeners() {
       const current = App._pendingAIFoods?.[App.aiEditorIndex];
       if (current) {
         current._base_grams = current.gramos_estimados || 1;
-        current._base_kcal = current.kcal || 0;
-        current._base_prot = current.proteinas || 0;
-        current._base_carbs = current.carbohidratos || 0;
-        current._base_fat = current.grasas || 0;
+        current._base_kcal = current.kcal;
+        current._base_prot = current.proteinas;
+        current._base_carbs = current.carbohidratos;
+        current._base_fat = current.grasas;
       }
     });
   });
@@ -1051,31 +1051,45 @@ export function selectFoodFromSearch(food) {
   if (qtyInput) qtyInput.value = food.defaultServingGrams || 100;
   document.getElementById('qty-picker-section')?.classList.remove('hidden');
 }
+
+function scaledCandidateValue(rawValue, ratio, field, { integer = false } = {}) {
+  const parsed = parseExternalNumber(rawValue, field);
+  if (parsed.error) throw new ValidationError(`Valor nutricional inválido: ${field}.`, [parsed.error]);
+  if (parsed.value === null) return null;
+  const scaled = parsed.value * ratio;
+  return integer ? Math.round(scaled) : Math.round(scaled * 10) / 10;
+}
+
 export async function confirmAddFood() {
   const food = App.selectedFood;
   if (!food) return;
 
-  const qty = parseFloat(document.getElementById('qty-input')?.value) || 100;
+  const qty = parseUserNumber(document.getElementById('qty-input')?.value);
+  if (qty === null || qty <= 0) {
+    showToast('Ingresa una cantidad válida', 'error');
+    return false;
+  }
   const ratio = qty / 100;
-  const source = food.source || 'local';
-
-  const logData = {
-    id: crypto.randomUUID(),
-    user_id: App.user?.id || 'local',
-    date: Utils.toDateStr(App.currentDiaryDate),
-    meal_type: App.currentMealType,
-    food_name: food.name,
-    quantity: qty,
-    calories: Math.round(food.calories_per_100g * ratio),
-    protein: parseFloat((food.protein_per_100g * ratio).toFixed(1)),
-    carbs: parseFloat((food.carbs_per_100g * ratio).toFixed(1)),
-    fat: parseFloat((food.fat_per_100g * ratio).toFixed(1)),
-    fiber: parseFloat(((food.fiber_per_100g || 0) * ratio).toFixed(1)),
-    sugar: parseFloat(((food.sugar_per_100g || 0) * ratio).toFixed(1)),
-    source,
-  };
 
   try {
+    const source = FOOD_SOURCES.includes(food.source) ? food.source : 'local';
+    const logData = {
+      id: crypto.randomUUID(),
+      user_id: App.user?.id || 'local',
+      date: Utils.toDateStr(App.currentDiaryDate),
+      meal_type: App.currentMealType,
+      food_name: food.name,
+      quantity: qty,
+      calories: scaledCandidateValue(food.calories_per_100g, ratio, 'calories', { integer: true }),
+      protein: scaledCandidateValue(food.protein_per_100g, ratio, 'protein'),
+      carbs: scaledCandidateValue(food.carbs_per_100g, ratio, 'carbs'),
+      fat: scaledCandidateValue(food.fat_per_100g, ratio, 'fat'),
+      fiber: scaledCandidateValue(food.fiber_per_100g, ratio, 'fiber'),
+      sugar: scaledCandidateValue(food.sugar_per_100g, ratio, 'sugar'),
+      source,
+      ...((source === 'ai' || source === 'hybrid') ? { ai_input_mode: 'text' } : {}),
+      ...(source === 'ai_label' ? { ai_input_mode: 'image' } : {}),
+    };
     saveFoodLogLocal(logData);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el alimento');
@@ -1089,8 +1103,8 @@ export async function confirmAddFood() {
 }
 export async function quickAddCalories() {
   const input = document.getElementById('quick-cal-input');
-  const cal = parseFloat(input?.value);
-  if (!cal || cal <= 0 || cal > 9999) { showToast('Ingresa una cantidad válida', 'error'); return; }
+  const cal = parseUserNumber(input?.value);
+  if (cal === null || cal <= 0 || cal > 9999) { showToast('Ingresa una cantidad válida', 'error'); return false; }
 
   try {
     saveFoodLogLocal({
@@ -1099,7 +1113,7 @@ export async function quickAddCalories() {
       date: Utils.toDateStr(App.currentDiaryDate),
       meal_type: App.currentMealType,
       food_name: 'Entrada rápida',
-      quantity: 0,
+      quantity: null,
       calories: cal,
       protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0,
       source: 'manual',
@@ -1116,9 +1130,39 @@ export async function quickAddCalories() {
   return true;
 }
 export function saveFoodLogLocal(logData) {
+  validateFoodLog(logData);
   const key = 'food_logs_' + logData.date;
   const existing = LS.get(key, []);
-  return LS.set(key, [...existing.filter(l => l.id !== logData.id), logData]);
+  const next = [...existing.filter(log => log?.id !== logData.id), logData];
+  return LS.set(key, next);
+}
+
+export function saveFoodLogsLocal(logs) {
+  if (!Array.isArray(logs) || logs.length === 0) {
+    throw new ValidationError('El lote debe contener al menos un FoodLog.', [
+      { field: '$', code: 'TYPE', message: 'Se esperaba un array no vacío.' },
+    ]);
+  }
+  logs.forEach(log => validateFoodLog(log));
+  const date = logs[0].date;
+  if (!logs.every(log => log.date === date)) {
+    throw new ValidationError('Un lote debe pertenecer a una única fecha.', [
+      { field: 'date', code: 'BATCH_DATE', message: 'El lote contiene fechas distintas.' },
+    ]);
+  }
+  const ids = new Set();
+  for (const log of logs) {
+    if (ids.has(log.id)) {
+      throw new ValidationError('El lote contiene IDs duplicados.', [
+        { field: 'id', code: 'BATCH_DUPLICATE', message: `ID duplicado: ${log.id}.` },
+      ]);
+    }
+    ids.add(log.id);
+  }
+  const key = 'food_logs_' + date;
+  const existing = LS.get(key, []);
+  const next = [...existing.filter(log => !ids.has(log?.id)), ...logs];
+  return LS.set(key, next);
 }
 export function deleteFoodLogLocal(logId, dateStr) {
   const key = 'food_logs_' + dateStr;
@@ -1151,12 +1195,14 @@ export function openEditFoodModal(logId) {
   const log = App.diaryLogs.find(l => l.id === logId);
   if (!log) return;
   _editFoodLogId = logId;
+  const quickAdd = isQuickAdd(log) || isLegacyQuickAdd(log);
   _editFoodBase = {
-    grams: Number(log.quantity) || 0,
-    kcal: Number(log.calories) || 0,
-    protein: Number(log.protein) || 0,
-    carbs: Number(log.carbs) || 0,
-    fat: Number(log.fat) || 0,
+    quickAdd,
+    grams: quickAdd ? null : finiteHistoricalNumber(log.quantity),
+    kcal: finiteHistoricalNumber(log.calories),
+    protein: finiteHistoricalNumber(log.protein),
+    carbs: finiteHistoricalNumber(log.carbs),
+    fat: finiteHistoricalNumber(log.fat),
   };
 
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
@@ -1166,6 +1212,11 @@ export function openEditFoodModal(logId) {
   setVal('edit-food-protein', _editFoodBase.protein);
   setVal('edit-food-carbs', _editFoodBase.carbs);
   setVal('edit-food-fat', _editFoodBase.fat);
+  const gramsInput = document.getElementById('edit-food-grams');
+  if (gramsInput) {
+    gramsInput.disabled = quickAdd;
+    if (quickAdd) gramsInput.value = '';
+  }
 
   /* Fibra/azúcar: solo informativo (no editables), se conservan al guardar */
   const fiberEl = document.getElementById('edit-food-fiber');
@@ -1178,7 +1229,7 @@ export function openEditFoodModal(logId) {
   /* La nota de escalado proporcional solo aplica si hay gramos base > 0
      (las entradas rápidas guardan quantity=0 y no escalan macros) */
   const scaleNote = document.getElementById('edit-food-scale-note');
-  if (scaleNote) scaleNote.style.display = _editFoodBase.grams > 0 ? 'block' : 'none';
+  if (scaleNote) scaleNote.style.display = !quickAdd && _editFoodBase.grams > 0 ? 'block' : 'none';
 
   updateEditFoodFavBtn(log);
   document.getElementById('edit-food-modal')?.classList.add('open');
@@ -1210,13 +1261,29 @@ export async function saveEditedFoodLog() {
 
   const name = document.getElementById('edit-food-name')?.value.trim();
   if (!name) { showToast('El nombre no puede estar vacío', 'error'); return; }
-  const grams = Math.max(0, Math.round(Number(document.getElementById('edit-food-grams')?.value) || 0));
-  const kcal = Math.max(0, Math.round(Number(document.getElementById('edit-food-kcal')?.value) || 0));
+  const quickAdd = _editFoodBase?.quickAdd === true;
+  const grams = quickAdd ? null : parseUserNumber(document.getElementById('edit-food-grams')?.value);
+  const kcal = parseUserNumber(document.getElementById('edit-food-kcal')?.value);
   const protein = Utils.round1(document.getElementById('edit-food-protein')?.value);
   const carbs = Utils.round1(document.getElementById('edit-food-carbs')?.value);
   const fat = Utils.round1(document.getElementById('edit-food-fat')?.value);
 
-  const updated = { ...log, food_name: name, quantity: grams, calories: kcal, protein, carbs, fat };
+  const updated = {
+    id: log.id,
+    user_id: log.user_id,
+    date: log.date,
+    meal_type: log.meal_type,
+    food_name: name,
+    quantity: grams,
+    calories: kcal,
+    protein: quickAdd ? 0 : protein,
+    carbs: quickAdd ? 0 : carbs,
+    fat: quickAdd ? 0 : fat,
+    fiber: quickAdd ? 0 : (finiteHistoricalNumber(log.fiber) ?? null),
+    sugar: quickAdd ? 0 : (finiteHistoricalNumber(log.sugar) ?? null),
+    source: log.source,
+    ...(Object.hasOwn(log, 'ai_input_mode') ? { ai_input_mode: log.ai_input_mode } : {}),
+  };
   try {
     saveFoodLogLocal(updated);
   } catch (error) {
@@ -1233,8 +1300,9 @@ export async function saveEditedFoodLog() {
 export function setupEditFoodListeners() {
   const gramsInput = document.getElementById('edit-food-grams');
   gramsInput?.addEventListener('input', (e) => {
-    if (!_editFoodBase) return;
-    const newGrams = Math.max(0, Number(e.target.value) || 0);
+    if (!_editFoodBase || _editFoodBase.quickAdd) return;
+    const newGrams = parseUserNumber(e.target.value);
+    if (newGrams === null || newGrams < 0) return;
     if (_editFoodBase.grams > 0) {
       const ratio = newGrams / _editFoodBase.grams;
       const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = Utils.round1(v); };
@@ -1250,11 +1318,11 @@ export function setupEditFoodListeners() {
   ['edit-food-kcal', 'edit-food-protein', 'edit-food-carbs', 'edit-food-fat'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', () => {
       if (!_editFoodBase) return;
-      _editFoodBase.grams = Math.max(0, Number(document.getElementById('edit-food-grams')?.value) || 0);
-      _editFoodBase.kcal = Number(document.getElementById('edit-food-kcal')?.value) || 0;
-      _editFoodBase.protein = Number(document.getElementById('edit-food-protein')?.value) || 0;
-      _editFoodBase.carbs = Number(document.getElementById('edit-food-carbs')?.value) || 0;
-      _editFoodBase.fat = Number(document.getElementById('edit-food-fat')?.value) || 0;
+      _editFoodBase.grams = parseUserNumber(document.getElementById('edit-food-grams')?.value);
+      _editFoodBase.kcal = parseUserNumber(document.getElementById('edit-food-kcal')?.value);
+      _editFoodBase.protein = parseUserNumber(document.getElementById('edit-food-protein')?.value);
+      _editFoodBase.carbs = parseUserNumber(document.getElementById('edit-food-carbs')?.value);
+      _editFoodBase.fat = parseUserNumber(document.getElementById('edit-food-fat')?.value);
     });
   });
 
@@ -1400,12 +1468,10 @@ export async function refreshDashboard() {
    strings. Sólo se aceptan conversiones completas y finitas para presentar y
    sumar; los demás valores se omiten sin modificar el registro persistido. */
 export function finiteHistoricalNumber(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null;
   if (typeof value !== 'string' || !value.trim()) return null;
-  const normalized = value.trim();
-  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  const parsed = parseUserNumber(value);
+  return parsed !== null && parsed >= 0 ? parsed : null;
 }
 function roundedHistoricalValue(value) {
   const parsed = finiteHistoricalNumber(value);
@@ -1522,6 +1588,7 @@ export function renderDashboardWater(forceRebuild = false) {
 export async function quickSetWater(glasses) {
   const goal = App.user?.water_goal || 8;
   try {
+    validateWater(glasses);
     LS.set('water_' + Utils.toDateStr(new Date()), glasses);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
@@ -1595,27 +1662,41 @@ export function renderDiaryMeals(logs) {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 export function createFoodItem(log, favIdentitySet) {
-  const isFav = favIdentitySet ? favIdentitySet.has(getFoodIdentity(log)) : getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log));
-  const source = log.source || 'manual';
+  const favoriteEligible = (() => {
+    try { validateFoodLog(log); return log.quantity !== null; } catch (_) { return false; }
+  })();
+  const isFav = favoriteEligible && (favIdentitySet ? favIdentitySet.has(getFoodIdentity(log)) : getFavorites().some(f => getFoodIdentity(f) === getFoodIdentity(log)));
+  const source = log.source;
   const wrapper = document.createElement('div');
   wrapper.dataset.logId = log.id;
   const item = document.createElement('div');
   item.className = 'food-item item-enter';
-  const badgeHtml = source === 'ai'
-    ? `<span class="food-source-badge ai">IA</span>`
-    : source === 'local'
-    ? `<span class="food-source-badge off" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">LOCAL</span>`
-    : source === 'off'
-    ? `<span class="food-source-badge off">OFF</span>`
-    : `<span class="food-source-badge manual">Manual</span>`;
-  const dotClass = source === 'ai' ? 'food-item-dot ai-source' : 'food-item-dot';
+  const sourceBadges = {
+    ai: ['ai', 'IA'],
+    hybrid: ['ai', 'Híbrido'],
+    ai_label: ['ai', 'Etiqueta IA'],
+    local: ['off', 'LOCAL'],
+    off: ['off', 'OFF'],
+    manual: ['manual', 'Manual'],
+  };
+  const [badgeClass, badgeLabel] = sourceBadges[source] || ['manual', 'Origen inválido'];
+  const badgeHtml = `<span class="food-source-badge ${badgeClass}">${badgeLabel}</span>`;
+  const dotClass = ['ai', 'hybrid', 'ai_label'].includes(source) ? 'food-item-dot ai-source' : 'food-item-dot';
   const quantity = finiteHistoricalNumber(log.quantity);
   const calories = roundedHistoricalValue(log.calories);
   const protein = roundedHistoricalValue(log.protein);
   const carbs = roundedHistoricalValue(log.carbs);
   const fat = roundedHistoricalValue(log.fat);
   const fiber = roundedHistoricalValue(log.fiber);
-  item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${quantity !== null && quantity !== 0 ? escapeHtml(quantity) + 'g' : '—'}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${calories === null ? '—' : calories + ' kcal'}</div>`;
+  const quickAdd = isQuickAdd(log) || isLegacyQuickAdd(log);
+  let quantityLabel;
+  if (quickAdd) quantityLabel = 'Calorías manuales';
+  else if (!Object.hasOwn(log, 'quantity')) quantityLabel = '—';
+  else if (log.quantity === null) quantityLabel = 'Sin dato';
+  else if (typeof log.quantity === 'string' && quantity !== null) quantityLabel = `${escapeHtml(quantity)}g ⚠`;
+  else if (quantity === null || quantity <= 0) quantityLabel = '— ⚠';
+  else quantityLabel = `${escapeHtml(quantity)}g`;
+  item.innerHTML = `<div class="food-item-left"> <div class="${dotClass}"></div> <div class="food-item-info"> <div class="food-item-name">${escapeHtml(log.food_name)}</div> <div class="food-item-qty">${quantityLabel}</div> </div> ${badgeHtml} </div> <div class="food-item-cal">${calories === null ? '—' : calories + ' kcal'}</div>`;
   /* Bloque expandible: macros + acciones (favorito / editar / eliminar).
      Se inserta DESPUÉS del ítem en el DOM para que se despliegue hacia abajo
      (antes iba antes en el orden de hijos y la info aparecía arriba del alimento). */
@@ -1630,13 +1711,14 @@ export function createFoodItem(log, favIdentitySet) {
         <div class="micro-item"><div class="micro-val">${fiber ?? '—'}${fiber === null ? '' : 'g'}</div><div class="micro-lbl">Fibra</div></div>
       </div>
       <div class="food-expanded-actions">
-        <button class="btn-fav-food" aria-label="Favorito">${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
+        <button class="btn-fav-food" aria-label="Favorito" ${favoriteEligible ? '' : 'disabled title="Registro no válido para favoritos"'}>${isFav ? '★ En favoritos' : '☆ Favorito'}</button>
         <button class="btn-edit-food" aria-label="Editar alimento"><i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i> Editar</button>
         <button class="btn-delete-food" aria-label="Eliminar alimento"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Eliminar</button>
       </div>
     </div>`;
   expanded.querySelector('.btn-fav-food').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!favoriteEligible) return;
     addLogToFavorites(log.id, expanded.querySelector('.btn-fav-food'));
   });
   expanded.querySelector('.btn-edit-food').addEventListener('click', (e) => {
@@ -1746,6 +1828,7 @@ export async function addWater() {
   if (App.todayWater >= goal) { showToast('¡Meta de hidratación alcanzada!', 'info'); return; }
   const next = App.todayWater + 1;
   try {
+    validateWater(next);
     LS.set('water_' + Utils.toDateStr(new Date()), next);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
@@ -1762,6 +1845,7 @@ export async function removeWater() {
   if (App.todayWater <= 0) return;
   const next = App.todayWater - 1;
   try {
+    validateWater(next);
     LS.set('water_' + Utils.toDateStr(new Date()), next);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
@@ -1776,6 +1860,7 @@ export async function removeWater() {
 export async function setWaterTo(count) {
   const goal = App.user?.water_goal || 8;
   try {
+    validateWater(count);
     LS.set('water_' + Utils.toDateStr(new Date()), count);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
@@ -1900,8 +1985,8 @@ export function loadAndRenderCaloriesChart() {
 }
 export async function logWeight() {
   const input = document.getElementById('log-weight-input');
-  const weight = parseFloat(input?.value);
-  if (!weight || weight < 20 || weight > 300) { showToast('Ingresa un peso válido (20-300 kg)', 'error'); return; }
+  const weight = parseUserNumber(input?.value);
+  try { validateWeight(weight); } catch (_) { showToast('Ingresa un peso válido (20-300 kg)', 'error'); return false; }
 
   const todayStr = Utils.toDateStr(new Date());
   let currentLogs;
@@ -1961,16 +2046,19 @@ export function refreshProfile() {
 }
 export async function saveProfile() {
   const name = document.getElementById('edit-name')?.value.trim();
-  const age = parseFloat(document.getElementById('edit-age')?.value);
-  const height = parseFloat(document.getElementById('edit-height')?.value);
-  const weight = parseFloat(document.getElementById('edit-weight')?.value);
+  const age = parseUserNumber(document.getElementById('edit-age')?.value);
+  const height = parseUserNumber(document.getElementById('edit-height')?.value);
+  const weight = parseUserNumber(document.getElementById('edit-weight')?.value);
   const activity = document.getElementById('edit-activity')?.value;
   const goal = document.getElementById('edit-goal')?.value;
 
   if (!name) { showToast('El nombre no puede estar vacío', 'error'); return; }
-  if (isNaN(age) || age < 12) { showToast('Edad inválida', 'error'); return; }
-  if (isNaN(height) || height < 100) { showToast('Altura inválida', 'error'); return; }
-  if (isNaN(weight) || weight < 30) { showToast('Peso inválido', 'error'); return; }
+  try {
+    validateProfile({ name, gender: App.user.gender, age, height, weight, activity_level: activity, goal });
+  } catch (_) {
+    showToast('Revisa edad, altura, peso, actividad y objetivo', 'error');
+    return false;
+  }
 
   const bmr = Utils.calculateBMR(App.user.gender, age, weight, height);
   const tdee = Utils.calculateTDEE(bmr, activity);
@@ -2086,9 +2174,9 @@ export function validateStep(step) {
       if (!ob.gender) { showToast('Selecciona tu género', 'error'); return false; }
       return true;
     case 1:
-      ob.age = parseFloat(document.getElementById('ob-age').value);
-      ob.height = parseFloat(document.getElementById('ob-height').value);
-      ob.weight = parseFloat(document.getElementById('ob-weight').value);
+      ob.age = parseUserNumber(document.getElementById('ob-age').value);
+      ob.height = parseUserNumber(document.getElementById('ob-height').value);
+      ob.weight = parseUserNumber(document.getElementById('ob-weight').value);
       if (isNaN(ob.age) || ob.age < 12 || ob.age > 100) { showToast('Ingresa una edad válida (12-100)', 'error'); return false; }
       if (isNaN(ob.height) || ob.height < 100 || ob.height > 250) { showToast('Ingresa una altura válida (100-250 cm)', 'error'); return false; }
       if (isNaN(ob.weight) || ob.weight < 30 || ob.weight > 300) { showToast('Ingresa un peso válido (30-300 kg)', 'error'); return false; }
@@ -2130,9 +2218,9 @@ export function selectGoal(card) {
 export async function finishOnboarding() {
   if (!ob.goal) { showToast('Selecciona tu objetivo', 'error'); return; }
 
-  ob.age = parseFloat(document.getElementById('ob-age').value);
-  ob.height = parseFloat(document.getElementById('ob-height').value);
-  ob.weight = parseFloat(document.getElementById('ob-weight').value);
+  ob.age = parseUserNumber(document.getElementById('ob-age').value);
+  ob.height = parseUserNumber(document.getElementById('ob-height').value);
+  ob.weight = parseUserNumber(document.getElementById('ob-weight').value);
 
   const bmr = Utils.calculateBMR(ob.gender, ob.age, ob.weight, ob.height);
   const tdee = Utils.calculateTDEE(bmr, ob.activity);
@@ -2361,10 +2449,17 @@ export function _registerScannedProduct(food, qty, sourceOverride) {
 }
 
 export async function _executeRegisterScannedProduct(food, qty, sourceOverride) {
-  qty = qty || 100;
-  sourceOverride = sourceOverride || 'off';
+  qty = parseUserNumber(qty);
+  if (qty === null || qty <= 0) {
+    showToast('Confirma una cantidad válida en gramos', 'error');
+    return false;
+  }
+  if (!FOOD_SOURCES.includes(sourceOverride)) {
+    showToast('La procedencia del producto no es válida', 'error');
+    return false;
+  }
   var ratio = qty / 100;
-  var dateStr = new Date().toLocaleDateString('en-CA');
+  var dateStr = Utils.toDateStr(new Date());
   var mealType = ScannerState.selectedMeal || 'breakfast';
   var logData = {
     id: crypto.randomUUID(),
@@ -2373,13 +2468,14 @@ export async function _executeRegisterScannedProduct(food, qty, sourceOverride) 
     meal_type: mealType,
     food_name: food.name || food.food_name,
     quantity: qty,
-    calories: Math.round((food.calories_per_100g || 0) * ratio),
-    protein: parseFloat(((food.protein_per_100g || 0) * ratio).toFixed(1)),
-    carbs: parseFloat(((food.carbs_per_100g || 0) * ratio).toFixed(1)),
-    fat: parseFloat(((food.fat_per_100g || 0) * ratio).toFixed(1)),
-    fiber: parseFloat(((food.fiber_per_100g || 0) * ratio).toFixed(1)),
-    sugar: parseFloat(((food.sugar_per_100g || 0) * ratio).toFixed(1)),
+    calories: scaledCandidateValue(food.calories_per_100g, ratio, 'calories', { integer: true }),
+    protein: scaledCandidateValue(food.protein_per_100g, ratio, 'protein'),
+    carbs: scaledCandidateValue(food.carbs_per_100g, ratio, 'carbs'),
+    fat: scaledCandidateValue(food.fat_per_100g, ratio, 'fat'),
+    fiber: scaledCandidateValue(food.fiber_per_100g, ratio, 'fiber'),
+    sugar: scaledCandidateValue(food.sugar_per_100g, ratio, 'sugar'),
     source: sourceOverride,
+    ...(sourceOverride === 'ai_label' ? { ai_input_mode: 'image' } : {}),
   };
   try {
     saveFoodLogLocal(logData);
@@ -2635,13 +2731,19 @@ export function initScannerEvents() {
   if (confGrams) {
     confGrams.addEventListener('input', function() {
       if (!ScannerState.pendingFood) return;
-      const g = parseInt(this.value) || 0;
-      const r = g / 100;
+      const g = parseUserNumber(this.value);
+      const ratio = g !== null && g > 0 ? g / 100 : null;
       const food = ScannerState.pendingFood;
-      document.getElementById('scanner-conf-kcal').textContent = Math.round((food.calories_per_100g || 0) * r);
-      document.getElementById('scanner-conf-prot').textContent = ((food.protein_per_100g || 0) * r).toFixed(1) + 'g';
-      document.getElementById('scanner-conf-carb').textContent = ((food.carbs_per_100g || 0) * r).toFixed(1) + 'g';
-      document.getElementById('scanner-conf-fat').textContent = ((food.fat_per_100g || 0) * r).toFixed(1) + 'g';
+      const preview = (rawValue, field, integer = false) => {
+        const parsed = parseExternalNumber(rawValue, field);
+        if (ratio === null || parsed.error || parsed.value === null) return '—';
+        const scaled = parsed.value * ratio;
+        return integer ? String(Math.round(scaled)) : `${Utils.round1(scaled).toFixed(1)}g`;
+      };
+      document.getElementById('scanner-conf-kcal').textContent = preview(food.calories_per_100g, 'calories', true);
+      document.getElementById('scanner-conf-prot').textContent = preview(food.protein_per_100g, 'protein');
+      document.getElementById('scanner-conf-carb').textContent = preview(food.carbs_per_100g, 'carbs');
+      document.getElementById('scanner-conf-fat').textContent = preview(food.fat_per_100g, 'fat');
     });
   }
 
@@ -2649,7 +2751,7 @@ export function initScannerEvents() {
   if (btnConfirmAdd) {
     btnConfirmAdd.addEventListener('click', function() {
       if (!ScannerState.pendingFood) return;
-      const g = parseInt(document.getElementById('scanner-conf-grams')?.value) || 100;
+      const g = parseUserNumber(document.getElementById('scanner-conf-grams')?.value);
       _executeRegisterScannedProduct(ScannerState.pendingFood, g, ScannerState.pendingFoodSource);
     });
   }
@@ -2682,21 +2784,54 @@ export function toggleFavorite(food, updateUI) {
     successMessage = 'Eliminado de favoritos';
     successType = 'info';
   } else {
-    // No existe → agregar con datos completos
-    const ratio = (food.defaultServingGrams || 100) / 100;
-    const nextFavorite = {
-      id:       crypto.randomUUID(),
-      food_name: nameToMatch,
-      quantity:  food.quantity  ?? food.defaultServingGrams ?? 100,
-      calories:  food.calories  !== undefined ? food.calories  : Math.round((food.calories_per_100g  || 0) * ratio),
-      protein:   food.protein   !== undefined ? food.protein   : parseFloat(((food.protein_per_100g  || 0) * ratio).toFixed(1)),
-      carbs:     food.carbs     !== undefined ? food.carbs     : parseFloat(((food.carbs_per_100g    || 0) * ratio).toFixed(1)),
-      fat:       food.fat       !== undefined ? food.fat       : parseFloat(((food.fat_per_100g      || 0) * ratio).toFixed(1)),
-      fiber:     food.fiber     !== undefined ? food.fiber     : parseFloat(((food.fiber_per_100g    || 0) * ratio).toFixed(1)),
-      sugar:     food.sugar     !== undefined ? food.sugar     : parseFloat(((food.sugar_per_100g    || 0) * ratio).toFixed(1)),
-      source:    food.source || 'manual',
-      savedAt:   Date.now(),   // metadato para debug/ordenación futura
-    };
+    let nextFavorite;
+    try {
+      const isLog = Object.hasOwn(food, 'meal_type') && Object.hasOwn(food, 'date');
+      let canonical;
+      if (isLog) {
+        validateFoodLog(food);
+        if (food.quantity === null) throw new ValidationError('Quick Add no admite favoritos.', [{ field: 'quantity', code: 'QUICK_ADD_FAVORITE', message: 'Quick Add no puede ser favorito.' }]);
+        canonical = food;
+      } else {
+        const quantity = parseExternalNumber(food.defaultServingGrams ?? food.quantity, 'quantity');
+        if (quantity.error || quantity.value === null || quantity.value <= 0) {
+          throw new ValidationError('Cantidad inválida para favorito.', [quantity.error || { field: 'quantity', code: 'REQUIRED', message: 'Falta cantidad.' }]);
+        }
+        const ratio = quantity.value / 100;
+        const source = Object.hasOwn(food, 'source') ? food.source : 'manual';
+        canonical = {
+          id: 'favorite-candidate', user_id: 'local', date: '2000-01-01', meal_type: 'snack',
+          food_name: nameToMatch, quantity: quantity.value,
+          calories: food.calories !== undefined ? food.calories : scaledCandidateValue(food.calories_per_100g, ratio, 'calories', { integer: true }),
+          protein: food.protein !== undefined ? food.protein : scaledCandidateValue(food.protein_per_100g, ratio, 'protein'),
+          carbs: food.carbs !== undefined ? food.carbs : scaledCandidateValue(food.carbs_per_100g, ratio, 'carbs'),
+          fat: food.fat !== undefined ? food.fat : scaledCandidateValue(food.fat_per_100g, ratio, 'fat'),
+          fiber: food.fiber !== undefined ? food.fiber : scaledCandidateValue(food.fiber_per_100g, ratio, 'fiber'),
+          sugar: food.sugar !== undefined ? food.sugar : scaledCandidateValue(food.sugar_per_100g, ratio, 'sugar'),
+          source,
+          ...((source === 'ai' || source === 'hybrid') ? { ai_input_mode: food.ai_input_mode } : {}),
+          ...(source === 'ai_label' ? { ai_input_mode: 'image' } : {}),
+        };
+        validateFoodLog(canonical);
+      }
+      nextFavorite = {
+        id: crypto.randomUUID(),
+        food_name: canonical.food_name,
+        quantity: canonical.quantity,
+        calories: canonical.calories,
+        protein: canonical.protein,
+        carbs: canonical.carbs,
+        fat: canonical.fat,
+        fiber: canonical.fiber,
+        sugar: canonical.sugar,
+        source: canonical.source,
+        ...(Object.hasOwn(canonical, 'ai_input_mode') ? { ai_input_mode: canonical.ai_input_mode } : {}),
+        savedAt: Date.now(),
+      };
+    } catch (error) {
+      showToast('Este registro debe corregirse antes de guardarlo como favorito', 'error');
+      return false;
+    }
     nextFavorites = [...favs, nextFavorite];
     successMessage = '¡Guardado en favoritos!';
     successType = 'success';
@@ -2733,7 +2868,8 @@ export async function addToMealFromFav(targetMeal) {
       fat: fav.fat,
       fiber: fav.fiber,
       sugar: fav.sugar,
-      source: fav.source || 'manual'
+      source: fav.source,
+      ...(Object.hasOwn(fav, 'ai_input_mode') ? { ai_input_mode: fav.ai_input_mode } : {})
     });
   } catch (error) {
     showPersistenceFailure(error, 'añadir el favorito al diario');
