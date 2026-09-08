@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById("evt_972e0e").addEventListener("click", function() { selectAIMeal(document.getElementById("evt_972e0e")); });
   document.getElementById("evt_2baaac").addEventListener("click", function() { clearAIResults(); });
   document.getElementById("evt_053219").addEventListener("click", function() { confirmAIFoods(); });
-  document.getElementById("evt_6e9839").addEventListener("click", function() { openAddFood(null, getSelectedAIMeal()); });
+  document.getElementById("evt_6e9839").addEventListener("click", function() { UI.openAddFood(null, UI.getSelectedAIMeal()); });
   document.getElementById("evt_26d38b").addEventListener("click", function() { toggleMealSection(document.getElementById("evt_26d38b")); });
   document.getElementById("evt_4bb3a8").addEventListener("click", function(event) { openAddFood(event,'breakfast'); });
   document.getElementById("evt_72552e").addEventListener("click", function() { toggleMealSection(document.getElementById("evt_72552e")); });

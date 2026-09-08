@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 class ClassList {
   constructor(...names) { this.names = new Set(names); }
@@ -216,6 +217,28 @@ test('configuración IA: fallo no anuncia IA activa ni éxito', async () => {
   assert.equal(result, false);
   assert.equal(status.textContent, '');
   assert.deepEqual(toastTypes(), ['error']);
+});
+
+test('H14: el acceso rápido usa UI.getSelectedAIMeal y abre el modal para la comida seleccionada', () => {
+  resetDOM();
+  const modal = element('food-modal');
+  element('modal-meal-title');
+  element('food-search-input');
+  element('qty-picker-section');
+  element('quick-cal-input');
+  element('food-search-results');
+  App.selectedAIMeal = 'dinner';
+
+  UI.openAddFood(null, UI.getSelectedAIMeal());
+
+  assert.equal(App.currentMealType, 'dinner');
+  assert.equal(elements.get('modal-meal-title').textContent, 'Añadir a Cena');
+  assert.equal(modal.classList.contains('open'), true);
+
+  const script = readFileSync(new URL('../www/js/script.js', import.meta.url), 'utf8');
+  assert.match(script, /UI\.openAddFood\(null, UI\.getSelectedAIMeal\(\)\)/);
+  assert.doesNotMatch(script, /(?<![.\w$])getSelectedAIMeal\s*\(/);
+  assert.doesNotMatch(script, /window\.getSelectedAIMeal\s*=/);
 });
 
 test('tema: fallo mantiene el tema anterior', async () => {
