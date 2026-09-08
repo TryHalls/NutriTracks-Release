@@ -15,6 +15,74 @@ import { parseExternalNumber } from './validation.js';
    Deja el objeto vacío para usar solo la config del usuario:
 */
 export const AI_CONFIG_OVERRIDE = {};
+// Incrementar ante cambios relevantes de parser, prompt, catálogo local o
+// sanitización/mapeo nutricional que puedan cambiar el resultado persistido.
+export const AI_ANALYSIS_CACHE_VERSION = 'v2';
+export const AI_ANALYSIS_CACHE_MAX_ENTRIES = 200;
+export const AI_ANALYSIS_CACHE_STRATEGIES = Object.freeze({
+  LOCAL: 'local',
+  REMOTE: 'remote',
+});
+
+export function buildAIAnalysisCacheKey(text, strategy, version = AI_ANALYSIS_CACHE_VERSION) {
+  if (!Object.values(AI_ANALYSIS_CACHE_STRATEGIES).includes(strategy)) return null;
+  return `${version}|${strategy}|${Utils.normalizeText(text)}`;
+}
+
+function isCacheRecord(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+const AI_CACHE_FOOD_FIELDS = [
+  'alimento', 'cantidad_estimada', 'gramos_estimados', 'kcal',
+  'proteinas', 'carbohidratos', 'grasas',
+];
+
+function hasExactCacheFields(value, expected) {
+  if (!isCacheRecord(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every(field => Object.hasOwn(value, field));
+}
+
+function isValidCachedNutritionValue(value) {
+  return value === null || (Number.isFinite(value) && value >= 0);
+}
+
+function isValidAIAnalysisCacheFood(food) {
+  return hasExactCacheFields(food, AI_CACHE_FOOD_FIELDS)
+    && typeof food.alimento === 'string'
+    && food.alimento.trim().length > 0
+    && typeof food.cantidad_estimada === 'string'
+    && food.cantidad_estimada.trim().length > 0
+    && ['gramos_estimados', 'kcal', 'proteinas', 'carbohidratos', 'grasas']
+      .every(field => isValidCachedNutritionValue(food[field]));
+}
+
+function isValidAIAnalysisCacheEntry(entry) {
+  return hasExactCacheFields(entry, ['result', 'ts', 'mode'])
+    && hasExactCacheFields(entry.result, ['alimentos'])
+    && Array.isArray(entry.result.alimentos)
+    && entry.result.alimentos.every(isValidAIAnalysisCacheFood)
+    && Number.isFinite(entry.ts)
+    && entry.ts >= 0
+    && ['ai', 'offline', 'hybrid'].includes(entry.mode);
+}
+
+function findOldestAIAnalysisCacheKey(cache) {
+  let oldestKey = null;
+  let oldestTimestamp = Infinity;
+  for (const key of Object.keys(cache)) {
+    const timestamp = Number.isFinite(cache[key]?.ts) ? cache[key].ts : -Infinity;
+    if (oldestKey === null || timestamp < oldestTimestamp) {
+      oldestKey = key;
+      oldestTimestamp = timestamp;
+    }
+  }
+  return oldestKey;
+}
+
 export function getAIConfig() {
   if (AI_CONFIG_OVERRIDE.apiKey) return AI_CONFIG_OVERRIDE;
   try {
@@ -135,23 +203,34 @@ export async function processImageForAI(file) {
   };
 }
 
-export function getCachedAIAnalysis(text) {
+export function getCachedAIAnalysis(text, strategy) {
   try {
+    const key = buildAIAnalysisCacheKey(text, strategy);
+    if (!key) return null;
     const cache = LS.get('ai_cache', {});
-    return cache[Utils.normalizeText(text)] || null;
+    if (!isCacheRecord(cache)) return null;
+    const entry = cache[key];
+    return isValidAIAnalysisCacheEntry(entry) ? entry : null;
   } catch (error) {
     console.warn('[AI cache] No se pudo leer la caché; se continuará sin ella.', error);
     return null;
   }
 }
 
-export function setCachedAIAnalysis(text, result) {
+export function setCachedAIAnalysis(text, result, strategy) {
   try {
-    const key = Utils.normalizeText(text);
-    const cache = LS.get('ai_cache', {});
-    const keys = Object.keys(cache);
-    const nextCache = { ...cache };
-    if (keys.length >= 200) delete nextCache[keys[0]];
+    const key = buildAIAnalysisCacheKey(text, strategy);
+    if (!key) return false;
+    const storedCache = LS.get('ai_cache', {});
+    const nextCache = isCacheRecord(storedCache) ? { ...storedCache } : {};
+    const isExistingKey = Object.hasOwn(nextCache, key);
+    if (!isExistingKey) {
+      while (Object.keys(nextCache).length >= AI_ANALYSIS_CACHE_MAX_ENTRIES) {
+        const oldestKey = findOldestAIAnalysisCacheKey(nextCache);
+        if (oldestKey === null) break;
+        delete nextCache[oldestKey];
+      }
+    }
     const cacheResult = {
       alimentos: (result?.alimentos || []).map(food => ({
         alimento: food.alimento,
@@ -163,7 +242,9 @@ export function setCachedAIAnalysis(text, result) {
         grasas: food.grasas,
       })),
     };
-    nextCache[key] = { result: cacheResult, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
+    const nextEntry = { result: cacheResult, ts: Date.now(), mode: App.lastAISourceMode || 'ai' };
+    if (!isValidAIAnalysisCacheEntry(nextEntry)) return false;
+    nextCache[key] = nextEntry;
     LS.set('ai_cache', nextCache);
     return true;
   } catch (error) {
@@ -181,13 +262,15 @@ export async function activateOfflineSmartFallback(text, originalError = null) {
   const localResult = Utils.smartOfflineAnalyzeText(text);
   if (localResult?.alimentos?.length) {
     App.lastAISourceMode = 'offline';
-    setCachedAIAnalysis(text, localResult);
+    setCachedAIAnalysis(text, localResult, AI_ANALYSIS_CACHE_STRATEGIES.LOCAL);
     return localResult;
   }
 
   const hybridResult = await fallbackToOpenFoodFacts(text);
   if (hybridResult?.alimentos?.length) {
-    setCachedAIAnalysis(text, hybridResult);
+    // Hybrid es el fallback remoto de la estrategia local; no debe ocupar la
+    // identidad remote ni impedir que una solicitud posterior pruebe Gemini.
+    setCachedAIAnalysis(text, hybridResult, AI_ANALYSIS_CACHE_STRATEGIES.LOCAL);
     return hybridResult;
   }
 
@@ -197,16 +280,19 @@ export async function activateOfflineSmartFallback(text, originalError = null) {
 /* ── Obtener nutrientes (entrada principal) ── */
 export async function getNutrientsFromAI(text, imageData = null) {
   const isImageMode = !!imageData;
+  const cfg = getAIConfig();
+  const requestedStrategy = cfg
+    ? AI_ANALYSIS_CACHE_STRATEGIES.REMOTE
+    : AI_ANALYSIS_CACHE_STRATEGIES.LOCAL;
 
   if (!isImageMode) {
-    const cached = getCachedAIAnalysis(text);
+    const cached = getCachedAIAnalysis(text, requestedStrategy);
     if (cached) {
       App.lastAISourceMode = cached.mode || 'ai';
       return cached.result || cached;
     }
   }
 
-  const cfg = getAIConfig();
   if (!cfg) {
     if (isImageMode) {
       throw new Error('IMAGE_NO_API_KEY');
@@ -236,7 +322,7 @@ Usa valores estándar por 100g y escala según la cantidad. Responde SOLO JSON.`
     /* P0: Gemini es el único proveedor. Se elimina la bifurcación de OpenAI */
     const result = await callGeminiAPI(cfg.apiKey, isImageMode ? imagePrompt : textPrompt, text, imageData);
     App.lastAISourceMode = 'ai';
-    if (!isImageMode) setCachedAIAnalysis(text, result);
+    if (!isImageMode) setCachedAIAnalysis(text, result, AI_ANALYSIS_CACHE_STRATEGIES.REMOTE);
     return result;
   } catch (e) {
     if (isImageMode) throw e;

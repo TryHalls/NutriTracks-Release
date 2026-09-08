@@ -190,6 +190,17 @@ test('roundtrip export/import includes all supported data and filters foreign/se
   for (const [key, value] of Object.entries(validBackup())) assert.equal(result[key], value);
 });
 
+test('H12: backup acepta una clave versionada con input normalizado de 500 caracteres', () => {
+  const cacheKey = `v2|remote|${'a'.repeat(500)}`;
+  const backup = validBackup({
+    nt_ai_cache: raw({
+      [cacheKey]: { result: { alimentos: [cachedFood] }, ts: 1_725_000_000_000, mode: 'ai' },
+    }),
+  });
+
+  assert.doesNotThrow(() => parseAndPrepareBackup(asText(backup)));
+});
+
 test('valid HTML-looking strings are preserved as text', () => {
   const html = '<img src=x data-test="backup-html">';
   const backup = validBackup({

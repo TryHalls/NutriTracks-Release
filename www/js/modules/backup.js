@@ -26,6 +26,8 @@ export const BACKUP_LIMITS = Object.freeze({
   maxCacheEntries: 200,
   maxCachedFoods: 100,
   maxStringLength: 500,
+  // La identidad v2 antepone versión y estrategia al input completo (máx. 500).
+  maxCacheKeyLength: 600,
 });
 
 const FIXED_KEYS = new Set([
@@ -250,7 +252,7 @@ function validateAICache(value) {
   const cacheKeys = ownKeys(value, 'nt_ai_cache');
   if (cacheKeys.length > BACKUP_LIMITS.maxCacheEntries) fail('nt_ai_cache excede el máximo de entradas.');
   for (const cacheKey of cacheKeys) {
-    stringValue(cacheKey, 'clave de nt_ai_cache', { min: 1, max: BACKUP_LIMITS.maxStringLength });
+    stringValue(cacheKey, 'clave de nt_ai_cache', { min: 1, max: BACKUP_LIMITS.maxCacheKeyLength });
     const path = `nt_ai_cache[${JSON.stringify(cacheKey)}]`;
     const entry = value[cacheKey];
     exactFields(entry, ['result', 'ts', 'mode'], path);

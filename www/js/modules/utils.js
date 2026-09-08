@@ -224,7 +224,7 @@ export const QUANTITY_PATTERN = 'media docena|docena|tres cuartos|medio|media|cu
 export const UNIT_PATTERN = 'kg|kilos?|g|grs?|gramos?|ml|mililitros?|l|lt|litros?|tazas?|vasos?|cucharadas?|cucharaditas?|rebanadas?|lonjas?|tiras?|unidades?|piezas?|latas?|filetes?|porciones?|rodajas?|presas?|scoops?|tallos?|tajadas?|mitad';
 
 export function normalizeText(text) {
-  return text.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 120);
+  return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 export function escapeRegExp(value) {

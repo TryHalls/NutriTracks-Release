@@ -101,6 +101,28 @@ async function withLS(overrides, callback) {
 
 const persistenceFailure = () => { throw new Error('simulated persistence failure'); };
 
+function cachedFoodResult(name = 'Arroz') {
+  return {
+    alimentos: [{
+      alimento: name,
+      cantidad_estimada: '100g',
+      gramos_estimados: 100,
+      kcal: 130,
+      proteinas: 3,
+      carbohidratos: 28,
+      grasas: 0.3,
+    }],
+  };
+}
+
+function cachedEntry(ts, mode = 'ai', name = 'Arroz') {
+  return {
+    result: cachedFoodResult(name),
+    ts,
+    mode,
+  };
+}
+
 test('comida: un fallo conserva modal/selección y muestra solo error', async () => {
   resetDOM();
   const modal = element('food-modal', { classes: ['open'] });
@@ -241,6 +263,127 @@ test('H14: el acceso rápido usa UI.getSelectedAIMeal y abre el modal para la co
   assert.doesNotMatch(script, /window\.getSelectedAIMeal\s*=/);
 });
 
+test('H12: la identidad usa texto completo normalizado, versión y estrategia', async () => {
+  const remote = API.AI_ANALYSIS_CACHE_STRATEGIES.REMOTE;
+  const local = API.AI_ANALYSIS_CACHE_STRATEGIES.LOCAL;
+  const prefix = 'a'.repeat(120);
+  const textA = `${prefix} arroz`;
+  const textB = `${prefix} pollo`;
+  const text500 = `${'z'.repeat(499)}x`;
+  let cache = {};
+  App.lastAISourceMode = 'ai';
+
+  await withLS({
+    get: (_key, fallback) => cache || fallback,
+    set: (_key, value) => { cache = value; return true; },
+  }, () => {
+    assert.equal(API.setCachedAIAnalysis(textA, cachedEntry(0).result, remote), true);
+    assert.ok(API.getCachedAIAnalysis(textA, remote));
+    assert.ok(API.getCachedAIAnalysis(`  ${textA.toUpperCase()}  `, remote));
+    assert.equal(API.getCachedAIAnalysis(textB, remote), null);
+    assert.equal(API.getCachedAIAnalysis(textA, local), null);
+
+    App.lastAISourceMode = 'offline';
+    assert.equal(API.setCachedAIAnalysis(textA, cachedFoodResult('Arroz local'), local), true);
+    assert.equal(API.getCachedAIAnalysis(textA, remote).mode, 'ai');
+    assert.equal(API.getCachedAIAnalysis(textA, local).mode, 'offline');
+
+    const keyA = API.buildAIAnalysisCacheKey(textA, remote);
+    const keyB = API.buildAIAnalysisCacheKey(textB, remote);
+    assert.notEqual(keyA, keyB);
+    assert.ok(keyA.endsWith(textA));
+    assert.equal(API.buildAIAnalysisCacheKey(text500, remote).split('|').at(-1).length, 500);
+    assert.match(keyA, new RegExp(`^${API.AI_ANALYSIS_CACHE_VERSION}\\|remote\\|`));
+  });
+});
+
+test('H12: versión anterior y caché legacy se ignoran sin romper la lectura', async () => {
+  const remote = API.AI_ANALYSIS_CACHE_STRATEGIES.REMOTE;
+  const text = 'dos huevos con arroz';
+  const legacyKey = text.toLowerCase().slice(0, 120);
+  const previousVersionKey = API.buildAIAnalysisCacheKey(text, remote, 'v1');
+  const cache = {
+    [legacyKey]: cachedEntry(1),
+    [previousVersionKey]: cachedEntry(2),
+  };
+
+  await withLS({ get: () => cache }, () => {
+    assert.equal(API.getCachedAIAnalysis(text, remote), null);
+  });
+});
+
+test('H12: insertar la entrada 201 elimina la más antigua por timestamp', async () => {
+  const remote = API.AI_ANALYSIS_CACHE_STRATEGIES.REMOTE;
+  let cache = Object.fromEntries(Array.from({ length: 200 }, (_, index) => [
+    `legacy-${index}`,
+    cachedEntry(index + 1),
+  ]));
+  App.lastAISourceMode = 'ai';
+
+  await withLS({
+    get: () => cache,
+    set: (_key, value) => { cache = value; return true; },
+  }, () => API.setCachedAIAnalysis('entrada nueva', cachedEntry(0).result, remote));
+
+  assert.equal(Object.keys(cache).length, 200);
+  assert.equal(Object.hasOwn(cache, 'legacy-0'), false);
+  assert.equal(Object.hasOwn(cache, 'legacy-1'), true);
+  assert.ok(cache[API.buildAIAnalysisCacheKey('entrada nueva', remote)]);
+});
+
+test('H12: actualizar una entrada con 200 elementos no expulsa otra y renueva ts', async () => {
+  const local = API.AI_ANALYSIS_CACHE_STRATEGIES.LOCAL;
+  const targetKey = API.buildAIAnalysisCacheKey('arroz', local);
+  let cache = {
+    [targetKey]: cachedEntry(1, 'offline'),
+    ...Object.fromEntries(Array.from({ length: 199 }, (_, index) => [
+      `legacy-${index}`,
+      cachedEntry(index + 2),
+    ])),
+  };
+  const originalKeys = new Set(Object.keys(cache));
+  const originalNow = Date.now;
+  Date.now = () => 9999;
+  App.lastAISourceMode = 'offline';
+
+  try {
+    await withLS({
+      get: () => cache,
+      set: (_key, value) => { cache = value; return true; },
+    }, () => API.setCachedAIAnalysis('ARROZ', cachedEntry(0).result, local));
+  } finally {
+    Date.now = originalNow;
+  }
+
+  assert.equal(Object.keys(cache).length, 200);
+  assert.deepEqual(new Set(Object.keys(cache)), originalKeys);
+  assert.equal(cache[targetKey].ts, 9999);
+  assert.equal(cache[targetKey].mode, 'offline');
+});
+
+test('H12: insertar con menos de 200 conserva entradas y una entrada corrupta es miss', async () => {
+  const remote = API.AI_ANALYSIS_CACHE_STRATEGIES.REMOTE;
+  const corruptKey = API.buildAIAnalysisCacheKey('corrupta', remote);
+  let cache = {
+    oldA: cachedEntry(1),
+    oldB: cachedEntry(2),
+    [corruptKey]: { result: null, ts: 'ayer', mode: 'ai' },
+  };
+  App.lastAISourceMode = 'ai';
+
+  await withLS({
+    get: () => cache,
+    set: (_key, value) => { cache = value; return true; },
+  }, () => {
+    assert.equal(API.getCachedAIAnalysis('corrupta', remote), null);
+    assert.equal(API.setCachedAIAnalysis('nueva', cachedEntry(0).result, remote), true);
+  });
+
+  assert.ok(cache.oldA);
+  assert.ok(cache.oldB);
+  assert.equal(Object.keys(cache).length, 4);
+});
+
 test('tema: fallo mantiene el tema anterior', async () => {
   resetDOM();
   body.classList.add('dark-theme');
@@ -253,7 +396,7 @@ test('tema: fallo mantiene el tema anterior', async () => {
 test('caché IA: fallo se limita a la optimización y no genera feedback nutricional', async () => {
   resetDOM();
   const result = await withLS({ get: () => ({}), set: persistenceFailure }, () => (
-    API.setCachedAIAnalysis('arroz', { alimentos: [{ alimento: 'Arroz' }] })
+    API.setCachedAIAnalysis('arroz', cachedFoodResult('Arroz'), API.AI_ANALYSIS_CACHE_STRATEGIES.LOCAL)
   ));
   assert.equal(result, false);
   assert.deepEqual(toastTypes(), []);
