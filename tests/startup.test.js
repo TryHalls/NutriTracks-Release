@@ -4,6 +4,7 @@ import { App, LS, PersistenceCode, PersistenceError } from '../www/js/modules/st
 import {
   InitializationState,
   initializeApp,
+  registerDayLifecycleAfterStartup,
   resetFromRecovery,
 } from '../www/js/modules/startup.js';
 
@@ -78,6 +79,21 @@ test('inicio: usuario válido valida primero y después inicializa fecha y aplic
   assert.equal(harness.calls.greeting, 1);
   assert.equal(harness.calls.dashboard, 1);
   assert.equal(harness.calls.config, 1);
+
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  let resumeCalls = 0;
+  registerDayLifecycleAfterStartup(result, {
+    app,
+    documentRef: {
+      visibilityState: 'visible',
+      addEventListener: (type, listener) => documentListeners.set(type, listener),
+    },
+    windowRef: { addEventListener: (type, listener) => windowListeners.set(type, listener) },
+    reconcileLocalDay: () => { resumeCalls += 1; return true; },
+  });
+  assert.equal(windowListeners.get('focus')(), true);
+  assert.equal(resumeCalls, 1);
 });
 
 test('inicio: nt_user corrupto entra en recuperación sin escribir ni mutar otros datos', async () => {
@@ -109,6 +125,18 @@ test('inicio: nt_user corrupto entra en recuperación sin escribir ni mutar otro
   assert.equal(harness.calls.theme, 0);
   assert.deepEqual([...storageBefore], snapshot);
   assert.equal(storageBefore.has('nt_last_active_date'), false);
+
+  const listenerCounts = { document: 0, window: 0 };
+  assert.equal(registerDayLifecycleAfterStartup(result, {
+    app,
+    documentRef: {
+      addEventListener: () => { listenerCounts.document += 1; },
+    },
+    windowRef: { addEventListener: () => { listenerCounts.window += 1; } },
+    reconcileLocalDay: () => { harness.calls.date += 1; },
+  }), null);
+  assert.deepEqual(listenerCounts, { document: 0, window: 0 });
+  assert.equal(harness.calls.date, 0);
 });
 
 test('inicio: error de lectura usa el mismo estado conservador', async () => {

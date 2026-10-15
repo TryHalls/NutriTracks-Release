@@ -4,6 +4,8 @@ export const InitializationState = Object.freeze({
   RECOVERY_ERROR: 'RECOVERY_ERROR',
 });
 
+const registeredLifecycles = new WeakMap();
+
 function setVisibility(documentRef, { onboarding = false, app = false, recovery = false }) {
   documentRef.getElementById('onboarding-screen')?.classList.toggle('hidden', !onboarding);
   documentRef.getElementById('app')?.classList.toggle('hidden', !app);
@@ -65,13 +67,18 @@ export async function initializeApp({
 }
 
 export function registerDayLifecycle({
+  app,
   documentRef,
   windowRef,
   reconcileLocalDay,
   onDayChanged,
   onError,
 }) {
+  const existingRegistration = registeredLifecycles.get(documentRef);
+  if (existingRegistration) return existingRegistration;
+
   const reconcileOnResume = () => {
+    if (!app?.user) return false;
     if (documentRef.visibilityState === 'hidden') return false;
     let changed;
     try {
@@ -87,7 +94,14 @@ export function registerDayLifecycle({
   documentRef.addEventListener('visibilitychange', reconcileOnResume);
   windowRef.addEventListener('focus', reconcileOnResume);
   windowRef.addEventListener('pageshow', reconcileOnResume);
+  registeredLifecycles.set(documentRef, reconcileOnResume);
   return reconcileOnResume;
+}
+
+export function registerDayLifecycleAfterStartup(initializationState, options) {
+  if (initializationState !== InitializationState.READY
+    && initializationState !== InitializationState.ONBOARDING) return null;
+  return registerDayLifecycle(options);
 }
 
 export function resetFromRecovery({ clearData, reload }) {

@@ -3,7 +3,12 @@ import test from 'node:test';
 import { App, LS } from '../www/js/modules/state.js';
 import * as Utils from '../www/js/modules/utils.js';
 import * as UI from '../www/js/modules/ui.js';
-import { registerDayLifecycle } from '../www/js/modules/startup.js';
+import {
+  InitializationState,
+  initializeApp,
+  registerDayLifecycle,
+  registerDayLifecycleAfterStartup,
+} from '../www/js/modules/startup.js';
 
 const NativeDate = globalThis.Date;
 
@@ -325,21 +330,39 @@ test('H13: el retorno desde background reconcilia y los eventos repetidos son id
 
   const documentListeners = new Map();
   const windowListeners = new Map();
+  const listenerCounts = { document: 0, window: 0 };
   const documentRef = {
     visibilityState: 'hidden',
-    addEventListener: (type, listener) => documentListeners.set(type, listener),
+    addEventListener: (type, listener) => {
+      listenerCounts.document += 1;
+      documentListeners.set(type, listener);
+    },
   };
   const windowRef = {
-    addEventListener: (type, listener) => windowListeners.set(type, listener),
+    addEventListener: (type, listener) => {
+      listenerCounts.window += 1;
+      windowListeners.set(type, listener);
+    },
   };
   let changedCount = 0;
   const onResume = registerDayLifecycle({
+    app: App,
     documentRef,
     windowRef,
     reconcileLocalDay: Utils.reconcileLocalDay,
     onDayChanged: () => { changedCount += 1; },
     onError: error => { throw error; },
   });
+  const duplicateRegistration = registerDayLifecycle({
+    app: App,
+    documentRef,
+    windowRef,
+    reconcileLocalDay: Utils.reconcileLocalDay,
+    onDayChanged: () => { changedCount += 1; },
+    onError: error => { throw error; },
+  });
+  assert.strictEqual(duplicateRegistration, onResume);
+  assert.deepEqual(listenerCounts, { document: 1, window: 2 });
 
   await withEnvironment(storage, {}, () => withNow('2026-01-11T00:01:00', async () => {
     assert.equal(documentListeners.get('visibilitychange')(), false);
@@ -353,6 +376,87 @@ test('H13: el retorno desde background reconcilia y los eventos repetidos son id
   assert.equal(App.todayDate, '2026-01-11');
   assert.equal(changedCount, 1);
   assert.equal(storage.operations.filter(([op, key]) => op === 'set' && key === 'nt_last_active_date').length, 1);
+});
+
+test('H13: lifecycle de onboarding espera al usuario persistido y se activa tras terminarlo', async () => {
+  const storage = new MemoryStorage();
+  seed(storage, 'last_active_date', '2026-01-10');
+  seed(storage, 'water_2026-01-11', 2);
+  seed(storage, 'food_logs_2026-01-11', [{ id: 'food-B', date: '2026-01-11' }]);
+  storage.operations = [];
+  resetApp('2026-01-10');
+
+  const startupResult = await initializeApp({
+    app: App,
+    ls: { getUser: () => null },
+    utils: { reconcileLocalDay: () => { throw new Error('no debe reconciliarse sin usuario'); } },
+    api: {},
+    ui: { injectWaterPage() {}, applySavedDarkMode() {} },
+    documentRef: { getElementById: () => null },
+  });
+  assert.equal(startupResult, InitializationState.ONBOARDING);
+  assert.equal(App.user, null);
+
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  const documentRef = {
+    visibilityState: 'visible',
+    addEventListener: (type, listener) => documentListeners.set(type, listener),
+  };
+  const windowRef = {
+    addEventListener: (type, listener) => windowListeners.set(type, listener),
+  };
+  registerDayLifecycleAfterStartup(startupResult, {
+    app: App,
+    documentRef,
+    windowRef,
+    reconcileLocalDay: Utils.reconcileLocalDay,
+  });
+
+  await withEnvironment(storage, {}, () => withNow('2026-01-10T23:59:00', async () => {
+    assert.equal(documentListeners.get('visibilitychange')(), false);
+    assert.equal(windowListeners.get('focus')(), false);
+    assert.equal(windowListeners.get('pageshow')(), false);
+    assert.deepEqual(storage.operations, []);
+  }));
+
+  const previousOnboarding = { ...UI.ob };
+  Object.assign(UI.ob, {
+    name: 'Ada', gender: 'female', age: 34, height: 168,
+    weight: 64, activity: 'moderate', goal: 'maintain',
+  });
+  const previousSetTimeout = globalThis.setTimeout;
+  try {
+    await withEnvironment(storage, {
+      'ob-age': { value: '34' },
+      'ob-height': { value: '168' },
+      'ob-weight': { value: '64' },
+      'onboarding-screen': {},
+      app: {},
+    }, () => withNow('2026-01-10T23:59:00', async () => {
+      globalThis.setTimeout = () => 0;
+      assert.equal(await UI.finishOnboarding(), true);
+      assert.ok(App.user);
+      assert.equal(stored(storage, 'user').id, App.user.id);
+      assert.equal(storage.operations.some(([op, key]) => op === 'set' && key === 'nt_last_active_date'), false);
+
+      storage.operations = [];
+      documentRef.visibilityState = 'hidden';
+      assert.equal(documentListeners.get('visibilitychange')(), false);
+      documentRef.visibilityState = 'visible';
+      await withNow('2026-01-11T00:01:00', async () => {
+        assert.equal(windowListeners.get('pageshow')(), true);
+      });
+    }));
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+    Object.assign(UI.ob, previousOnboarding);
+  }
+
+  assert.equal(App.todayDate, '2026-01-11');
+  assert.equal(App.todayWater, 2);
+  assert.deepEqual(App.todayLogs, [{ id: 'food-B', date: '2026-01-11' }]);
+  assert.equal(stored(storage, 'last_active_date'), '2026-01-11');
 });
 
 test('H13: un fallo de lectura o de marcador no publica estado parcial', async () => {
