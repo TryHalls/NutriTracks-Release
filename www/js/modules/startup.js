@@ -48,7 +48,7 @@ export async function initializeApp({
   }
 
   try {
-    utils.checkAndResetForNewDay();
+    utils.reconcileLocalDay();
   } catch (error) {
     app.user = null;
     return enterRecoveryState(documentRef, logger, error);
@@ -62,6 +62,32 @@ export async function initializeApp({
   ui.refreshDashboard();
   api.loadAIConfig();
   return InitializationState.READY;
+}
+
+export function registerDayLifecycle({
+  documentRef,
+  windowRef,
+  reconcileLocalDay,
+  onDayChanged,
+  onError,
+}) {
+  const reconcileOnResume = () => {
+    if (documentRef.visibilityState === 'hidden') return false;
+    let changed;
+    try {
+      changed = reconcileLocalDay();
+    } catch (error) {
+      onError?.(error);
+      return false;
+    }
+    if (changed) onDayChanged?.();
+    return changed;
+  };
+
+  documentRef.addEventListener('visibilitychange', reconcileOnResume);
+  windowRef.addEventListener('focus', reconcileOnResume);
+  windowRef.addEventListener('pageshow', reconcileOnResume);
+  return reconcileOnResume;
 }
 
 export function resetFromRecovery({ clearData, reload }) {

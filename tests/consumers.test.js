@@ -41,7 +41,11 @@ globalThis.window = {
   lucide: { createIcons() {} },
   requestIdleCallback() {},
 };
-globalThis.crypto = { randomUUID };
+Object.defineProperty(globalThis, 'crypto', {
+  configurable: true,
+  value: { randomUUID },
+  writable: true,
+});
 globalThis.lucide = window.lucide;
 globalThis.document = {
   body,
@@ -132,6 +136,7 @@ test('comida: un fallo conserva modal/selección y muestra solo error', async ()
     carbs_per_100g: 20, fat_per_100g: 1,
   };
   App.currentDiaryDate = new Date('2026-09-07T12:00:00');
+  App.diaryFollowsToday = false;
   const selected = App.selectedFood;
 
   const result = await withLS({ get: () => [], set: persistenceFailure }, () => UI.confirmAddFood());

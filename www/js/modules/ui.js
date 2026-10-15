@@ -129,13 +129,24 @@ function readSecondary(key, fallback) {
     return fallback;
   }
 }
+function reconcileBeforeDateSensitiveAction(action) {
+  if (!App.user) return false;
+  try {
+    Utils.reconcileLocalDay();
+    return true;
+  } catch (error) {
+    showPersistenceFailure(error, action);
+    return false;
+  }
+}
 export function setGreeting() {
   if (!App.user) return;
   const firstName = (App.user.name || 'Usuario').split(' ')[0];
   const el = document.getElementById('greeting-text');
   const elDate = document.getElementById('greeting-date');
   if (el) el.textContent = `${Utils.greetingByHour()}, ${firstName}`;
-  if (elDate) elDate.textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const today = App.todayDate ? Utils.dateFromLocalDateString(App.todayDate) : new Date();
+  if (elDate) elDate.textContent = today.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 export function navigateTo(page, dir = 0) {
   const current = document.querySelector('.page.active');
@@ -522,6 +533,7 @@ export function validatePendingAIFoods() {
   return true;
 }
 export async function saveEditedAIFoods() {
+  if (!reconcileBeforeDateSensitiveAction('preparar los alimentos de IA')) return false;
   persistCurrentAIFoodFromForm();
   if (!validatePendingAIFoods()) return;
 
@@ -649,9 +661,11 @@ export function renderAIResults(alimentos) {
   updateAIResultsSummary();
   openAIFoodEditModal(true);
 }
-export function confirmAIFoods() {
+export async function confirmAIFoods() {
   if (!App._pendingAIFoods?.length) return;
+  if (!reconcileBeforeDateSensitiveAction('confirmar los alimentos de IA')) return false;
   openAIFoodEditModal();
+  return true;
 }
 export function clearAIResults() {
   const el = document.getElementById('ai-results');
@@ -667,13 +681,14 @@ let _aiInsightSig = '';
 let _aiInsightText = null;
 export async function refreshAIInsight(force = false) {
   if (!App.user) return;
+  if (!reconcileBeforeDateSensitiveAction('leer los datos de hoy')) return false;
   const bodyEl = document.getElementById('ai-insight-body');
   const textEl = document.getElementById('ai-insight-text');
   const thinkEl = document.getElementById('ai-thinking');
   if (!bodyEl || !textEl) return;
 
-  const todayStr = Utils.toDateStr(new Date());
-  const logs = readSecondary('food_logs_' + todayStr, []);
+  const todayStr = App.todayDate;
+  const logs = App.todayLogs;
   const totals = logs.reduce(
     (acc, l) => ({
       cal: acc.cal + (finiteHistoricalNumber(l.calories) ?? 0),
@@ -1063,6 +1078,7 @@ function scaledCandidateValue(rawValue, ratio, field, { integer = false } = {}) 
 export async function confirmAddFood() {
   const food = App.selectedFood;
   if (!food) return;
+  if (!reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
 
   const qty = parseUserNumber(document.getElementById('qty-input')?.value);
   if (qty === null || qty <= 0) {
@@ -1102,6 +1118,7 @@ export async function confirmAddFood() {
   return true;
 }
 export async function quickAddCalories() {
+  if (!reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
   const input = document.getElementById('quick-cal-input');
   const cal = parseUserNumber(input?.value);
   if (cal === null || cal <= 0 || cal > 9999) { showToast('Ingresa una cantidad válida', 'error'); return false; }
@@ -1130,14 +1147,19 @@ export async function quickAddCalories() {
   return true;
 }
 export function saveFoodLogLocal(logData) {
+  if (!App.user) throw new Error('No hay un usuario válido para guardar en el diario.');
   validateFoodLog(logData);
+  Utils.reconcileLocalDay();
   const key = 'food_logs_' + logData.date;
   const existing = LS.get(key, []);
   const next = [...existing.filter(log => log?.id !== logData.id), logData];
-  return LS.set(key, next);
+  const saved = LS.set(key, next);
+  if (logData.date === App.todayDate) App.todayLogs = next;
+  return saved;
 }
 
 export function saveFoodLogsLocal(logs) {
+  if (!App.user) throw new Error('No hay un usuario válido para guardar en el diario.');
   if (!Array.isArray(logs) || logs.length === 0) {
     throw new ValidationError('El lote debe contener al menos un FoodLog.', [
       { field: '$', code: 'TYPE', message: 'Se esperaba un array no vacío.' },
@@ -1159,18 +1181,27 @@ export function saveFoodLogsLocal(logs) {
     }
     ids.add(log.id);
   }
+  Utils.reconcileLocalDay();
   const key = 'food_logs_' + date;
   const existing = LS.get(key, []);
   const next = [...existing.filter(log => !ids.has(log?.id)), ...logs];
-  return LS.set(key, next);
+  const saved = LS.set(key, next);
+  if (date === App.todayDate) App.todayLogs = next;
+  return saved;
 }
 export function deleteFoodLogLocal(logId, dateStr) {
+  if (!App.user) throw new Error('No hay un usuario válido para editar el diario.');
+  Utils.reconcileLocalDay();
   const key = 'food_logs_' + dateStr;
-  return LS.set(key, LS.get(key, []).filter(l => l.id !== logId));
+  const next = LS.get(key, []).filter(l => l.id !== logId);
+  const saved = LS.set(key, next);
+  if (dateStr === App.todayDate) App.todayLogs = next;
+  return saved;
 }
 export async function deleteFoodLog(logId) {
   if (!confirm('¿Eliminar este alimento?')) return;
-  const dateStr = Utils.toDateStr(App.currentDiaryDate);
+  if (!reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
+  const dateStr = App.diaryLogs.find(log => log.id === logId)?.date || Utils.toDateStr(App.currentDiaryDate);
   try {
     deleteFoodLogLocal(logId, dateStr);
   } catch (error) {
@@ -1251,6 +1282,7 @@ export function closeEditFoodModal(event) {
 
 export async function saveEditedFoodLog() {
   if (!_editFoodLogId) return;
+  if (!reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
   const log = App.diaryLogs.find(l => l.id === _editFoodLogId);
   if (!log) {
     /* El log ya no existe (p. ej. se cambió de fecha con el modal abierto) */
@@ -1422,19 +1454,8 @@ export function setupEditFoodListeners() {
 }
 export async function refreshDashboard() {
   if (!App.user) return;
-  const todayStr = Utils.toDateStr(new Date());
-  let nextTodayLogs;
-  let nextTodayWater;
-  try {
-    nextTodayLogs = LS.get('food_logs_' + todayStr, []);
-    nextTodayWater = LS.get('water_' + todayStr, 0);
-  } catch (error) {
-    showPersistenceFailure(error, 'leer los datos de hoy');
-    return false;
-  }
-  App.todayLogs = nextTodayLogs;
-  App.todayWater = nextTodayWater;
-  const totals = computeTotals(nextTodayLogs);
+  if (!reconcileBeforeDateSensitiveAction('leer los datos de hoy')) return false;
+  const totals = computeTotals(App.todayLogs);
 
   updateCaloriesRing(totals.calories, App.user.daily_calories);
   updateMacroBars(totals);
@@ -1543,8 +1564,8 @@ export function updateMacroBars(totals) {
   });
 }
 export function loadTodayWater() {
-  const todayStr = Utils.toDateStr(new Date());
-  App.todayWater = LS.get('water_' + todayStr, 0);
+  if (!App.user) return false;
+  Utils.reconcileLocalDay();
 }
 /* Pop táctil del vaso — reinicia la animación en re-toques rápidos */
 function popGlass(btn) {
@@ -1586,10 +1607,11 @@ export function renderDashboardWater(forceRebuild = false) {
   });
 }
 export async function quickSetWater(glasses) {
+  if (!reconcileBeforeDateSensitiveAction('preparar el agua de hoy')) return false;
   const goal = App.user?.water_goal || 8;
   try {
     validateWater(glasses);
-    LS.set('water_' + Utils.toDateStr(new Date()), glasses);
+    LS.set('water_' + App.todayDate, glasses);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
     return false;
@@ -1601,6 +1623,7 @@ export async function quickSetWater(glasses) {
   return true;
 }
 export async function refreshDiary() {
+  if (App.user && !reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
   const dateStr = Utils.toDateStr(App.currentDiaryDate);
   const label = document.getElementById('diary-date-label');
   if (label) label.textContent = Utils.formatDateLabel(App.currentDiaryDate);
@@ -1614,10 +1637,12 @@ export async function refreshDiary() {
   return true;
 }
 export function changeDate(delta) {
+  if (!reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
   const d = new Date(App.currentDiaryDate);
   d.setDate(d.getDate() + delta);
   App.currentDiaryDate = d;
-  refreshDiary();
+  App.diaryFollowsToday = Utils.toDateStr(d) === App.todayDate;
+  return refreshDiary();
 }
 /* P2: Solo anima los ítems nuevos (evita re-disparar cascadeFadeIn sobre toda la lista) */
 let _renderedDiaryIds = new Set();
@@ -1760,6 +1785,7 @@ export function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, c => _ESC_MAP[c]);
 }
 export async function refreshWaterPage(reloadFromStorage = true) {
+  if (!App.user) return false;
   if (reloadFromStorage) {
     try {
       loadTodayWater();
@@ -1824,12 +1850,13 @@ export function renderBigGlassGrid(current, goal) {
   });
 }
 export async function addWater() {
+  if (!reconcileBeforeDateSensitiveAction('preparar el agua de hoy')) return false;
   const goal = App.user?.water_goal || 8;
   if (App.todayWater >= goal) { showToast('¡Meta de hidratación alcanzada!', 'info'); return; }
   const next = App.todayWater + 1;
   try {
     validateWater(next);
-    LS.set('water_' + Utils.toDateStr(new Date()), next);
+    LS.set('water_' + App.todayDate, next);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
     return false;
@@ -1842,11 +1869,12 @@ export async function addWater() {
   return true;
 }
 export async function removeWater() {
+  if (!reconcileBeforeDateSensitiveAction('preparar el agua de hoy')) return false;
   if (App.todayWater <= 0) return;
   const next = App.todayWater - 1;
   try {
     validateWater(next);
-    LS.set('water_' + Utils.toDateStr(new Date()), next);
+    LS.set('water_' + App.todayDate, next);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
     return false;
@@ -1858,10 +1886,11 @@ export async function removeWater() {
   return true;
 }
 export async function setWaterTo(count) {
+  if (!reconcileBeforeDateSensitiveAction('preparar el agua de hoy')) return false;
   const goal = App.user?.water_goal || 8;
   try {
     validateWater(count);
-    LS.set('water_' + Utils.toDateStr(new Date()), count);
+    LS.set('water_' + App.todayDate, count);
   } catch (error) {
     showPersistenceFailure(error, 'guardar el agua');
     return false;
@@ -1879,7 +1908,7 @@ export function renderWaterChart() {
   const goal = App.user?.water_goal || 8;
   const labels = [], values = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
+    const d = Utils.dateFromLocalDateString(App.todayDate); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
     values.push(readSecondary('water_' + Utils.toDateStr(d), 0));
   }
@@ -1903,14 +1932,16 @@ export function renderWaterChart() {
 }
 export async function refreshProgress() {
   if (!App.user) return;
+  if (!reconcileBeforeDateSensitiveAction('leer el progreso')) return false;
   loadAndRenderWeightChart();
   loadAndRenderCaloriesChart();
+  return true;
 }
 export function loadAndRenderWeightChart() {
   const canvas = document.getElementById('weight-chart');
   if (!canvas) return;
   let weightLogs = readSecondary('weight_logs', []).sort((a, b) => a.date.localeCompare(b.date));
-  if (!weightLogs.length && App.user.weight) weightLogs = [{ date: Utils.toDateStr(new Date()), weight: App.user.weight }];
+  if (!weightLogs.length && App.user.weight) weightLogs = [{ date: App.todayDate, weight: App.user.weight }];
 
   const labels = weightLogs.map(l => { const d = new Date(l.date + 'T12:00:00'); return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }); });
   const data = weightLogs.map(l => l.weight);
@@ -1949,7 +1980,7 @@ export function loadAndRenderCaloriesChart() {
   const dailyGoal = App.user?.daily_calories || 2000;
   const labels = [], consumed = [], goalLine = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
+    const d = Utils.dateFromLocalDateString(App.todayDate); d.setDate(d.getDate() - i);
     labels.push(d.toLocaleDateString('es-ES', { weekday: 'short' }));
     const dayLogs = readSecondary('food_logs_' + Utils.toDateStr(d), []);
     consumed.push(Math.round(dayLogs.reduce(
@@ -1984,11 +2015,12 @@ export function loadAndRenderCaloriesChart() {
   });
 }
 export async function logWeight() {
+  if (!reconcileBeforeDateSensitiveAction('preparar el registro de peso')) return false;
   const input = document.getElementById('log-weight-input');
   const weight = parseUserNumber(input?.value);
   try { validateWeight(weight); } catch (_) { showToast('Ingresa un peso válido (20-300 kg)', 'error'); return false; }
 
-  const todayStr = Utils.toDateStr(new Date());
+  const todayStr = App.todayDate;
   let currentLogs;
   try {
     currentLogs = LS.get('weight_logs', []);
@@ -2100,6 +2132,7 @@ export function clearDataConfirm() {
     try { App.recognition.stop(); } catch (_) {}
   }
   App.user = null;
+  App.todayDate = null;
   App.todayLogs = [];
   App.diaryLogs = [];
   App.todayWater = 0;
@@ -2110,6 +2143,7 @@ export function clearDataConfirm() {
   App.selectedAIMeal = 'breakfast';
   App.currentMealType = 'breakfast';
   App.currentDiaryDate = new Date();
+  App.diaryFollowsToday = true;
   App.lastAIInputMode = 'text';
   App.lastAISourceMode = null;
   App.allFoods = [];
@@ -2245,7 +2279,7 @@ export async function finishOnboarding() {
     water_goal: 8
   };
 
-  const nextWeightLogs = [{ date: Utils.toDateStr(new Date()), weight: ob.weight }];
+  const nextWeightLogs = [{ date: Utils.getLocalDateString(), weight: ob.weight }];
   try {
     LS.setMany({ user: userData, weight_logs: nextWeightLogs });
   } catch (error) {
@@ -2449,6 +2483,7 @@ export function _registerScannedProduct(food, qty, sourceOverride) {
 }
 
 export async function _executeRegisterScannedProduct(food, qty, sourceOverride) {
+  if (!reconcileBeforeDateSensitiveAction('preparar el registro del escáner')) return false;
   qty = parseUserNumber(qty);
   if (qty === null || qty <= 0) {
     showToast('Confirma una cantidad válida en gramos', 'error');
@@ -2459,7 +2494,7 @@ export async function _executeRegisterScannedProduct(food, qty, sourceOverride) 
     return false;
   }
   var ratio = qty / 100;
-  var dateStr = Utils.toDateStr(new Date());
+  var dateStr = App.todayDate;
   var mealType = ScannerState.selectedMeal || 'breakfast';
   var logData = {
     id: crypto.randomUUID(),
@@ -2853,6 +2888,7 @@ export function toggleFavorite(food, updateUI) {
 
 export async function addToMealFromFav(targetMeal) {
   if (!pendingFavToAdd) return;
+  if (!reconcileBeforeDateSensitiveAction('preparar el diario')) return false;
   const fav = pendingFavToAdd;
   try {
     saveFoodLogLocal({

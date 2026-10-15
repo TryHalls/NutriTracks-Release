@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import * as Utils from '../www/js/modules/utils.js';
 
 globalThis.window ||= { Chart: function Chart() {}, lucide: { createIcons() {} } };
 globalThis.window.Chart ||= function Chart() {};
@@ -155,7 +156,11 @@ async function withDiaryEnvironment(callback, options = {}) {
   LS.setMany = values => { Object.entries(values).forEach(([key, value]) => storage.set(key, value)); return true; };
   App.user = { id: 'u1' };
   App.currentPage = 'diary';
+  App.todayDate = Utils.getLocalDateString(new Date());
+  App.todayLogs = [];
+  App.todayWater = 0;
   App.diaryLogs = [];
+  App.diaryFollowsToday = false;
 
   try {
     return await callback({ ...dom, storage, writes });
@@ -174,6 +179,7 @@ function setDateStorage(storage, date, logs) {
 
 async function showDate(storage, date) {
   App.currentDiaryDate = new Date(`${date}T12:00:00`);
+  App.diaryFollowsToday = false;
   assert.equal(await UI.refreshDiary(), true);
 }
 

@@ -28,7 +28,7 @@ function createHarness() {
     elements,
     calls,
     documentRef: { getElementById: (id) => elements.get(id) || null },
-    utils: { checkAndResetForNewDay: () => { calls.date += 1; } },
+    utils: { reconcileLocalDay: () => { calls.date += 1; } },
     ui: {
       injectWaterPage: () => { calls.inject += 1; },
       applySavedDarkMode: () => { calls.theme += 1; },
@@ -67,7 +67,7 @@ test('inicio: usuario válido valida primero y después inicializa fecha y aplic
     ...harness,
     app,
     ls: { getUser: () => { order.push('user'); return user; } },
-    utils: { checkAndResetForNewDay: () => { order.push('date'); harness.calls.date += 1; } },
+    utils: { reconcileLocalDay: () => { order.push('date'); harness.calls.date += 1; } },
   });
 
   assert.equal(result, InitializationState.READY);
@@ -127,6 +127,26 @@ test('inicio: error de lectura usa el mismo estado conservador', async () => {
   assert.equal(visible(harness, 'onboarding-screen'), false);
   assert.equal(harness.calls.date, 0);
   assert.equal(harness.calls.inject, 0);
+  assert.equal(harness.calls.errors, 1);
+});
+
+test('inicio: error al reconciliar fecha válida entra en recuperación', async () => {
+  const harness = createHarness();
+  const app = { user: null };
+  const error = new PersistenceError(PersistenceCode.READ_FAILED, 'fallo al cargar el día');
+  const result = await initializeApp({
+    ...harness,
+    app,
+    ls: { getUser: () => ({ id: 'user-b', name: 'Ada' }) },
+    utils: { reconcileLocalDay: () => { throw error; } },
+  });
+
+  assert.equal(result, InitializationState.RECOVERY_ERROR);
+  assert.equal(app.user, null);
+  assert.equal(visible(harness, 'storage-recovery-screen'), true);
+  assert.equal(visible(harness, 'app'), false);
+  assert.equal(harness.calls.inject, 0);
+  assert.equal(harness.calls.dashboard, 0);
   assert.equal(harness.calls.errors, 1);
 });
 

@@ -7,7 +7,7 @@ import { LOCAL_FOOD_DB, SYNONYMS_MAP } from './modules/db.js';
 import * as Utils from './modules/utils.js';
 import * as API from './modules/api.js';
 import * as UI from './modules/ui.js';
-import { InitializationState, initializeApp, resetFromRecovery } from './modules/startup.js';
+import { InitializationState, initializeApp, registerDayLifecycle, resetFromRecovery } from './modules/startup.js';
 
 /* ──────────────────────────────────────────────────────────────
    INICIALIZACIÓN
@@ -42,6 +42,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (initializationState === InitializationState.READY) handleURLParams();
+
+  if (initializationState === InitializationState.READY) {
+    registerDayLifecycle({
+      documentRef: document,
+      windowRef: window,
+      reconcileLocalDay: Utils.reconcileLocalDay,
+      onDayChanged: () => {
+        UI.setGreeting();
+        if (App.currentPage === 'home') void UI.refreshDashboard();
+        if (App.currentPage === 'diary' && App.diaryFollowsToday) void UI.refreshDiary();
+        if (App.currentPage === 'water') void UI.refreshWaterPage(false);
+        if (App.currentPage === 'progress') void UI.refreshProgress();
+      },
+      onError: (error) => UI.showPersistenceFailure(error, 'reconciliar el día local'),
+    });
+  }
 
   /* ── Renderizar iconos Lucide ── */
   if (typeof lucide !== 'undefined') lucide.createIcons();

@@ -2,7 +2,7 @@ import { App, LS } from './state.js';
 import { LOCAL_FOOD_DB, SYNONYMS_MAP } from './db.js';
 import { parseExternalNumber, parseUserNumber } from './validation.js';
 
-export function getLocalDateString(date) {
+export function getLocalDateString(date = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -14,11 +14,16 @@ export function toDateStr(date) {
   return getLocalDateString(date);
 }
 
+export function dateFromLocalDateString(dateString) {
+  const [year, month, day] = String(dateString).split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
 export function formatDateLabel(date) {
   const d = date instanceof Date ? date : new Date(date);
-  const today = toDateStr(new Date());
+  const today = App.todayDate || toDateStr(new Date());
 
-  const yesterday = new Date();
+  const yesterday = dateFromLocalDateString(today);
   yesterday.setDate(yesterday.getDate() - 1);
   const yest = toDateStr(yesterday);
 
@@ -35,22 +40,28 @@ export function greetingByHour() {
   return 'Buenas noches';
 }
 
-/* ──────────────────────────────────────────────────────────────
-   DETECCIÓN DE CAMBIO DE DÍA (reinicio automático de contadores)
-   ────────────────────────────────────────────────────────────── */
-export function checkAndResetForNewDay() {
-  const lastDate = LS.get('last_active_date', null);
-  const todayStr = toDateStr(new Date());
-  const changedDay = lastDate && lastDate !== todayStr;
-  // La fecha activa se confirma antes de reflejar el cambio en memoria.
-  LS.set('last_active_date', todayStr);
-  if (changedDay) {
-    // Los registros de comida y agua son por fecha → se reinician solos.
-    // Actualizamos App.todayWater para reflejar el nuevo día.
-    App.todayWater = 0;
-    console.info('[App] ✦ Nuevo día detectado. Contadores reiniciados.');
+/* Reconciliación única del día local. Las lecturas y la persistencia del
+   marcador ocurren antes de publicar cualquier cambio en memoria. */
+export function reconcileLocalDay(now = new Date()) {
+  const todayStr = getLocalDateString(now);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(todayStr) || Number.isNaN(new Date(now).getTime())) {
+    throw new TypeError('La fecha local para reconciliar no es válida.');
   }
-  return changedDay;
+  if (App.todayDate === todayStr) return false;
+
+  const lastDate = LS.get('last_active_date', null);
+  const nextTodayWater = LS.get('water_' + todayStr, 0);
+  const nextTodayLogs = LS.get('food_logs_' + todayStr, []);
+
+  if (lastDate !== todayStr) LS.set('last_active_date', todayStr);
+
+  const followsToday = App.diaryFollowsToday !== false;
+  App.todayDate = todayStr;
+  App.todayWater = nextTodayWater;
+  App.todayLogs = nextTodayLogs;
+  if (followsToday) App.currentDiaryDate = dateFromLocalDateString(todayStr);
+  App.diaryFollowsToday = followsToday;
+  return true;
 }
 export function calculateBMR(gender, age, weight, height) {
   return gender === 'male'
