@@ -3,6 +3,7 @@ import * as Utils from './utils.js';
 import * as UI from './ui.js';
 import { LOCAL_FOOD_DB } from './db.js';
 import { parseExternalNumber } from './validation.js';
+import { ScannerPhase } from './scanner-machine.js';
 
 /*
    Hardcode para dev (descomenta y pon tu clave):
@@ -778,6 +779,7 @@ function _safeTriggerLabelPhotoFallback() {
 
 /* ══════════════════════════════════════════════════════════════ */
 export async function _queryOpenFoodFactsByBarcode(barcode) {
+  if (UI.ScannerState.phase !== ScannerPhase.LOOKUP) return false;
   var url = 'https://world.openfoodfacts.org/api/v0/product/' + encodeURIComponent(barcode) + '.json';
   try {
     var res = await fetchWithTimeout(url, {}, 7000);
@@ -798,8 +800,6 @@ export async function _queryOpenFoodFactsByBarcode(barcode) {
         var fat = parseExternalNumber(n.fat_100g, 'fat');
         var fiber = parseExternalNumber(n.fiber_100g, 'fiber');
         var sugar = parseExternalNumber(n.sugars_100g, 'sugar');
-        UI._scannerSetPhase(3);
-        UI._scannerSetStatus('\u2705 "' + name + '" encontrado', false);
         UI._registerScannedProduct({
           name: name,
           calories_per_100g: kcal.value,
@@ -822,13 +822,14 @@ export async function _queryOpenFoodFactsByBarcode(barcode) {
 
 /* Fase 2b: Fallback - foto de etiqueta */
 export async function _analyzeLabelWithGemini(imageFile) {
+  if (UI.ScannerState.phase !== ScannerPhase.LABEL_ANALYSIS) return false;
   UI._scannerSetPhase(2);
   UI._scannerSetStatus('Analizando etiqueta con IA...', true);
   var cfg = getAIConfig();
   if (!cfg) {
     UI.showToast('Necesitas una API Key de Gemini para analizar la etiqueta.', 'error');
     UI._scannerSetStatus('Sin API Key de Gemini', false);
-    UI.ScannerState.processed = false;
+    UI._scannerLabelAnalysisFailed();
     return;
   }
   try {
@@ -878,8 +879,6 @@ export async function _analyzeLabelWithGemini(imageFile) {
     var carbs = parseExternalNumber(parsed.carbs, 'carbs');
     var fat = parseExternalNumber(parsed.fat, 'fat');
     if (!name || calories.value === null || calories.error) throw new Error('No se encontraron calorias válidas en la etiqueta');
-    UI._scannerSetPhase(3);
-    UI._scannerSetStatus('\u2756 "' + name + '" analizado con IA', false);
     UI._registerScannedProduct({
       name: name,
       calories_per_100g: calories.value,
@@ -894,7 +893,7 @@ export async function _analyzeLabelWithGemini(imageFile) {
     console.error('[Scanner][Gemini]', err);
     UI.showToast('No pude leer la etiqueta. Registralo manualmente.', 'error');
     UI._scannerSetStatus('Error al analizar etiqueta', false);
-    UI.ScannerState.processed = false;
+    UI._scannerLabelAnalysisFailed();
   }
 }
 
