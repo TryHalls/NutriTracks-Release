@@ -292,10 +292,14 @@ test('H13: scanner y peso escriben la fecha local reconciliada', async () => {
   markerAndPreviousDay(storage);
   resetApp('2026-01-10');
   await withEnvironment(storage, { 'log-weight-input': { value: '70' } }, () => withNow('2026-01-11T00:01:00', async () => {
-    assert.equal(await UI._executeRegisterScannedProduct({
+    assert.equal(UI._scannerTransition('STARTING'), true);
+    assert.equal(UI._scannerTransition('SCANNING'), true);
+    assert.equal(UI._scannerTransition('LOOKUP'), true);
+    assert.equal(UI._registerScannedProduct({
       name: 'Leche', calories_per_100g: 60, protein_per_100g: 3,
       carbs_per_100g: 5, fat_per_100g: 3, fiber_per_100g: 0, sugar_per_100g: 5,
     }, 100, 'off'), true);
+    assert.equal(await UI._executeRegisterScannedProduct(UI.ScannerState.pendingFood, 100, 'off'), true);
     assert.equal(await UI.logWeight(), true);
   }));
 

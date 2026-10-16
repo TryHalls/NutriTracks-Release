@@ -6,3 +6,4 @@ import './consumers.test.js';
 import './diary.test.js';
 import './startup.test.js';
 import './day-rollover.test.js';
+import './scanner.test.js';

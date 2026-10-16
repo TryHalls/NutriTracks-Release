@@ -20,6 +20,15 @@ import {
   parseAndPrepareBackup,
   serializeFilteredBackup,
 } from './backup.js';
+import {
+  ScannerPhase,
+  beginScannerSave,
+  createScannerMachine,
+  finishScannerSave,
+  resetScannerMachine,
+  retryScanner,
+  transitionScannerState,
+} from './scanner-machine.js';
 
 let _html5QrcodeLoaded = null;
 function loadHtml5Qrcode() {
@@ -2156,11 +2165,10 @@ export function clearDataConfirm() {
   _renderedDiaryIds = new Set();
   _renderedDiaryDate = '';
   _ringData = null;
-  ScannerState.pendingFood = null;
-  ScannerState.pendingFoodSource = null;
-  ScannerState.processed = false;
-  ScannerState.selectedMeal = 'breakfast';
-  ScannerState.scanning = false;
+  resetScannerMachine(ScannerState);
+  ScannerState.cameraRunning = false;
+  const scannerConfirmButton = document.getElementById('btn-scanner-confirm');
+  if (scannerConfirmButton) scannerConfirmButton.disabled = false;
   [App.caloriesRingChart, App.weightChartInst, App.caloriesChartInst, App.waterChartInst].forEach(c => { if (c) { c.destroy(); } });
   App.caloriesRingChart = App.weightChartInst = App.caloriesChartInst = App.waterChartInst = null;
 
@@ -2300,14 +2308,33 @@ export async function finishOnboarding() {
   }, 400);
   return true;
 }
-export const ScannerState = {
+export const ScannerState = Object.assign(createScannerMachine(), {
   html5Qr: null,
-  scanning: false,
-  selectedMeal: 'breakfast',
-  processed: false,
-  pendingFood: null,
-  pendingFoodSource: null,
-};
+  cameraRunning: false,
+});
+export function _scannerTransition(nextPhase) {
+  return transitionScannerState(ScannerState, nextPhase);
+}
+function setScannerConfirmDisabled(disabled) {
+  const button = document.getElementById('btn-scanner-confirm');
+  if (!button) return;
+  button.disabled = disabled;
+  button.setAttribute('aria-busy', disabled ? 'true' : 'false');
+}
+export function _scannerBeginSave() {
+  if (!beginScannerSave(ScannerState)) return false;
+  setScannerConfirmDisabled(true);
+  return true;
+}
+export function _scannerFinishSave(succeeded) {
+  const finished = finishScannerSave(ScannerState, succeeded);
+  if (finished && !succeeded) setScannerConfirmDisabled(false);
+  return finished;
+}
+function clearScannerCodeInput() {
+  const input = document.getElementById('scanner-manual-code');
+  if (input) input.value = '';
+}
 export function _scannerSetPhase(active) {
   [1, 2, 3].forEach(n => {
     const el = document.getElementById('phase-' + n);
@@ -2337,11 +2364,21 @@ export function _scannerHideBarcodeResult() {
   if (el) el.style.display = 'none';
 }
 export async function openScannerModal() {
-  await loadHtml5Qrcode();
   const modal = document.getElementById('scanner-container');
-  if (!modal) return;
-  ScannerState.processed = false;
-  ScannerState.pendingFood = null;
+  if (!modal || ScannerState.phase !== ScannerPhase.CLOSED) return false;
+  resetScannerMachine(ScannerState);
+  if (!_scannerTransition(ScannerPhase.STARTING)) return false;
+  try {
+    await loadHtml5Qrcode();
+  } catch (error) {
+    _scannerTransition(ScannerPhase.CLOSED);
+    resetScannerMachine(ScannerState);
+    showToast('No se pudo cargar la librería de escaneo. Puedes reintentar.', 'error');
+    return false;
+  }
+
+  setScannerConfirmDisabled(false);
+  clearScannerCodeInput();
   _scannerHideBarcodeResult();
   _scannerSetPhase(1);
   _scannerSetStatus('Apunta al código de barras del producto', false);
@@ -2363,17 +2400,24 @@ export async function openScannerModal() {
   modal.style.display = 'flex';
   setTimeout(() => modal.classList.add('open'), 10);
   _startBarcodeScanner();
+  return true;
 }
 export async function closeScannerModal() {
+  if (ScannerState.phase !== ScannerPhase.CLOSED) _scannerTransition(ScannerPhase.CLOSED);
   await _stopBarcodeScanner();
+  resetScannerMachine(ScannerState);
+  setScannerConfirmDisabled(false);
+  clearScannerCodeInput();
   const modal = document.getElementById('scanner-container');
   if (modal) {
     modal.classList.remove('open');
     setTimeout(() => { modal.style.display = 'none'; }, 300);
   }
   _scannerHideBarcodeResult();
+  return true;
 }
 export async function _startBarcodeScanner() {
+  if (![ScannerPhase.STARTING, ScannerPhase.SCANNING].includes(ScannerState.phase)) return false;
   _scannerSetStatus('Inicializando cámara...', true);
   const btnRetryCam = document.getElementById('btn-scanner-retry-cam');
   if (btnRetryCam) btnRetryCam.classList.add('hidden');
@@ -2381,17 +2425,20 @@ export async function _startBarcodeScanner() {
   if (typeof Html5Qrcode === 'undefined') {
     showToast('Librería de escaneo no disponible. Verifica tu conexión a Internet.', 'error');
     _scannerSetStatus('Librería no disponible', false);
-    return;
+    _scannerTransition(ScannerPhase.NOT_FOUND);
+    if (btnRetryCam) btnRetryCam.classList.remove('hidden');
+    return false;
   }
   try {
     if (!ScannerState.html5Qr) ScannerState.html5Qr = new Html5Qrcode('interactive-scanner');
-    ScannerState.scanning = true;
+    ScannerState.cameraRunning = true;
     await ScannerState.html5Qr.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 160 }, aspectRatio: 1.0, disableFlip: false },
       _onBarcodeDetected,
       function () { }
     );
+    if (ScannerState.phase === ScannerPhase.STARTING) _scannerTransition(ScannerPhase.SCANNING);
     _scannerSetStatus('Apunta al código de barras del producto', false);
     
     // Ensure camera is shown
@@ -2399,8 +2446,10 @@ export async function _startBarcodeScanner() {
     if (camWrap) camWrap.style.display = 'block';
     const statusEl = document.getElementById('scanner-status');
     if (statusEl) statusEl.style.display = 'flex';
+    return true;
   } catch (err) {
-    ScannerState.scanning = false;
+    ScannerState.cameraRunning = false;
+    _scannerTransition(ScannerPhase.NOT_FOUND);
     console.error('[Scanner] Error cámara:', err);
     const msg = (err.name === 'NotAllowedError' || String(err).includes('Permission'))
       ? 'Permiso de cámara denegado. Actívalo en la configuración.'
@@ -2408,24 +2457,30 @@ export async function _startBarcodeScanner() {
     showToast(msg, 'error');
     _scannerSetStatus(msg, false);
     if (btnRetryCam) btnRetryCam.classList.remove('hidden');
+    return false;
   }
 }
 export async function _stopBarcodeScanner() {
-  if (ScannerState.html5Qr && ScannerState.scanning) {
+  if (ScannerState.html5Qr && ScannerState.cameraRunning) {
     try { await ScannerState.html5Qr.stop(); } catch (_e) { /* silencioso */ }
-    ScannerState.scanning = false;
+    finally { ScannerState.cameraRunning = false; }
   }
   ScannerState.html5Qr = null;
 }
 export async function _onBarcodeDetected(decodedText) {
-  if (ScannerState.processed) return;
-  ScannerState.processed = true;
+  if (!_scannerTransition(ScannerPhase.LOOKUP)) return false;
+  ScannerState.code = String(decodedText || '').trim();
+  if (!ScannerState.code) {
+    _showLabelPhotoFallbackUI();
+    return false;
+  }
   if (navigator.vibrate) navigator.vibrate(200); // Vibrate on success
   await _stopBarcodeScanner();
-  _scannerShowBarcodeResult(decodedText);
+  _scannerShowBarcodeResult(ScannerState.code);
   _scannerSetPhase(2);
   _scannerSetStatus('Buscando en Open Food Facts...', true);
-  await API._queryOpenFoodFactsByBarcode(decodedText);
+  await API._queryOpenFoodFactsByBarcode(ScannerState.code);
+  return true;
 }
 export function _triggerLabelPhotoFallback() {
   showToast('Producto no encontrado en base de datos. Analizando etiqueta con IA...', 'warning', '🤖');
@@ -2436,6 +2491,7 @@ export function _triggerLabelPhotoFallback() {
 }
 
 export function _showLabelPhotoFallbackUI() {
+  if (!_scannerTransition(ScannerPhase.NOT_FOUND)) return false;
   _stopBarcodeScanner();
   const camWrap = document.getElementById('scanner-camera-wrap');
   if (camWrap) camWrap.style.display = 'none';
@@ -2445,12 +2501,67 @@ export function _showLabelPhotoFallbackUI() {
   const notFound = document.getElementById('scanner-not-found');
   if (notFound) notFound.style.display = 'block';
   _scannerSetPhase(2);
-  
   if (navigator.vibrate) navigator.vibrate([100, 100, 100]); // Error vibration
+  return true;
+}
+
+export async function _beginScannerLabelAnalysis(imageFile) {
+  if (!imageFile || ![ScannerPhase.SCANNING, ScannerPhase.NOT_FOUND].includes(ScannerState.phase)) return false;
+  if (!_scannerTransition(ScannerPhase.LABEL_ANALYSIS)) return false;
+  _stopBarcodeScanner();
+  const camWrap = document.getElementById('scanner-camera-wrap');
+  if (camWrap) camWrap.style.display = 'none';
+  const notFound = document.getElementById('scanner-not-found');
+  if (notFound) notFound.style.display = 'none';
+  const statusEl = document.getElementById('scanner-status');
+  if (statusEl) statusEl.style.display = 'flex';
+  _scannerSetPhase(2);
+  _scannerSetStatus('Analizando etiqueta con IA...', true);
+  await API._analyzeLabelWithGemini(imageFile);
+  return true;
+}
+
+export function _scannerLabelAnalysisFailed() {
+  return _showLabelPhotoFallbackUI();
+}
+
+export async function _searchScannerBarcode(barcode) {
+  const code = String(barcode || '').trim();
+  if (!code || ScannerState.phase !== ScannerPhase.NOT_FOUND) return false;
+  if (!_scannerTransition(ScannerPhase.LOOKUP)) return false;
+  ScannerState.code = code;
+  ScannerState.pendingFood = null;
+  ScannerState.pendingFoodSource = null;
+  clearScannerCodeInput();
+  const notFound = document.getElementById('scanner-not-found');
+  if (notFound) notFound.style.display = 'none';
+  _scannerSetPhase(2);
+  _scannerSetStatus('Buscando código manual...', true);
+  await API._queryOpenFoodFactsByBarcode(code);
+  return true;
+}
+
+export async function _retryBarcodeScanner() {
+  if (!retryScanner(ScannerState)) return false;
+  clearScannerCodeInput();
+  setScannerConfirmDisabled(false);
+  _scannerHideBarcodeResult();
+  _scannerSetPhase(1);
+  _scannerSetStatus('Apunta al código de barras del producto', false);
+  const notFound = document.getElementById('scanner-not-found');
+  if (notFound) notFound.style.display = 'none';
+  const confirmation = document.getElementById('scanner-confirmation');
+  if (confirmation) confirmation.style.display = 'none';
+  const camWrap = document.getElementById('scanner-camera-wrap');
+  if (camWrap) camWrap.style.display = 'block';
+  await _startBarcodeScanner();
+  return true;
 }
 
 export function _registerScannedProduct(food, qty, sourceOverride) {
-  ScannerState.pendingFood = food;
+  if (!food || ![ScannerPhase.LOOKUP, ScannerPhase.LABEL_ANALYSIS].includes(ScannerState.phase)) return false;
+  if (!_scannerTransition(ScannerPhase.CONFIRM)) return false;
+  ScannerState.pendingFood = { ...food };
   ScannerState.pendingFoodSource = sourceOverride || 'off';
   
   // Stop camera before showing confirmation
@@ -2468,7 +2579,8 @@ export function _registerScannedProduct(food, qty, sourceOverride) {
   const confScreen = document.getElementById('scanner-confirmation');
   if (confScreen) {
     confScreen.style.display = 'block';
-    document.getElementById('scanner-conf-name').textContent = food.name || food.food_name || 'Producto';
+    const name = document.getElementById('scanner-conf-name');
+    if (name) name.textContent = food.name || food.food_name || 'Producto';
     const confGrams = document.getElementById('scanner-conf-grams');
     if (confGrams) {
       confGrams.value = qty || 100;
@@ -2480,49 +2592,66 @@ export function _registerScannedProduct(food, qty, sourceOverride) {
   
   _scannerSetPhase(3);
   _scannerSetStatus('Confirmar registro', false);
+  setScannerConfirmDisabled(false);
+  return true;
 }
 
 export async function _executeRegisterScannedProduct(food, qty, sourceOverride) {
-  if (!reconcileBeforeDateSensitiveAction('preparar el registro del escáner')) return false;
-  qty = parseUserNumber(qty);
-  if (qty === null || qty <= 0) {
-    showToast('Confirma una cantidad válida en gramos', 'error');
-    return false;
-  }
-  if (!FOOD_SOURCES.includes(sourceOverride)) {
-    showToast('La procedencia del producto no es válida', 'error');
-    return false;
-  }
-  var ratio = qty / 100;
-  var dateStr = App.todayDate;
-  var mealType = ScannerState.selectedMeal || 'breakfast';
-  var logData = {
-    id: crypto.randomUUID(),
-    user_id: (App.user && App.user.id) ? App.user.id : 'local',
-    date: dateStr,
-    meal_type: mealType,
-    food_name: food.name || food.food_name,
+  if (ScannerState.phase !== ScannerPhase.CONFIRM || !food) return false;
+  const payload = {
+    food: { ...food },
     quantity: qty,
-    calories: scaledCandidateValue(food.calories_per_100g, ratio, 'calories', { integer: true }),
-    protein: scaledCandidateValue(food.protein_per_100g, ratio, 'protein'),
-    carbs: scaledCandidateValue(food.carbs_per_100g, ratio, 'carbs'),
-    fat: scaledCandidateValue(food.fat_per_100g, ratio, 'fat'),
-    fiber: scaledCandidateValue(food.fiber_per_100g, ratio, 'fiber'),
-    sugar: scaledCandidateValue(food.sugar_per_100g, ratio, 'sugar'),
     source: sourceOverride,
-    ...(sourceOverride === 'ai_label' ? { ai_input_mode: 'image' } : {}),
+    mealType: ScannerState.selectedMeal || 'breakfast',
   };
+  if (!_scannerBeginSave()) return false;
+
+  const restoreConfirmation = () => {
+    _scannerFinishSave(false);
+    return false;
+  };
+  if (!reconcileBeforeDateSensitiveAction('preparar el registro del escáner')) return restoreConfirmation();
+
+  const quantity = parseUserNumber(payload.quantity);
+  if (quantity === null || quantity <= 0) {
+    showToast('Confirma una cantidad válida en gramos', 'error');
+    return restoreConfirmation();
+  }
+  if (!FOOD_SOURCES.includes(payload.source)) {
+    showToast('La procedencia del producto no es válida', 'error');
+    return restoreConfirmation();
+  }
+
   try {
+    const ratio = quantity / 100;
+    const logData = {
+      id: crypto.randomUUID(),
+      user_id: App.user?.id || 'local',
+      date: App.todayDate,
+      meal_type: payload.mealType,
+      food_name: payload.food.name || payload.food.food_name,
+      quantity,
+      calories: scaledCandidateValue(payload.food.calories_per_100g, ratio, 'calories', { integer: true }),
+      protein: scaledCandidateValue(payload.food.protein_per_100g, ratio, 'protein'),
+      carbs: scaledCandidateValue(payload.food.carbs_per_100g, ratio, 'carbs'),
+      fat: scaledCandidateValue(payload.food.fat_per_100g, ratio, 'fat'),
+      fiber: scaledCandidateValue(payload.food.fiber_per_100g, ratio, 'fiber'),
+      sugar: scaledCandidateValue(payload.food.sugar_per_100g, ratio, 'sugar'),
+      source: payload.source,
+      ...(payload.source === 'ai_label' ? { ai_input_mode: 'image' } : {}),
+    };
     saveFoodLogLocal(logData);
   } catch (error) {
+    restoreConfirmation();
     showPersistenceFailure(error, 'guardar el producto escaneado');
     return false;
   }
+  _scannerFinishSave(true);
   var mealNames = { breakfast: 'Desayuno', lunch: 'Almuerzo', dinner: 'Cena', snack: 'Snack' };
   await closeScannerModal();
   if (App.currentPage === 'home') await refreshDashboard();
   if (App.currentPage === 'diary') await refreshDiary();
-  showToast('📦 "' + (food.name || food.food_name) + '" añadido a ' + (mealNames[mealType] || 'Comida') + ' ✓', 'success', '📦');
+  showToast('📦 "' + (payload.food.name || payload.food.food_name) + '" añadido a ' + (mealNames[payload.mealType] || 'Comida') + ' ✓', 'success', '📦');
   return true;
 }
 export async function exportData() {
@@ -2681,9 +2810,7 @@ export function initScannerEvents() {
     labelInput.addEventListener('change', async function (e) {
       var file = e.target && e.target.files && e.target.files[0];
       if (!file) return;
-      ScannerState.processed = true;
-      // We assume _analyzeLabelWithGemini exists
-      await API._analyzeLabelWithGemini(file);
+      await _beginScannerLabelAnalysis(file);
     });
   }
 
@@ -2701,7 +2828,7 @@ export function initScannerEvents() {
   const btnTorch = document.getElementById('btn-scanner-torch');
   if (btnTorch) {
     btnTorch.addEventListener('click', async function() {
-      if (ScannerState.html5Qr && ScannerState.scanning) {
+      if (ScannerState.html5Qr && ScannerState.cameraRunning) {
         const isTorchOn = btnTorch.classList.contains('active');
         try {
           await ScannerState.html5Qr.applyVideoConstraints({
@@ -2721,7 +2848,7 @@ export function initScannerEvents() {
   const btnRetryCam = document.getElementById('btn-scanner-retry-cam');
   if (btnRetryCam) {
     btnRetryCam.addEventListener('click', function() {
-      _startBarcodeScanner();
+      _retryBarcodeScanner();
     });
   }
 
@@ -2743,21 +2870,14 @@ export function initScannerEvents() {
   const btnFallbackRetry = document.getElementById('btn-fallback-retry');
   if (btnFallbackRetry) {
     btnFallbackRetry.addEventListener('click', function() {
-      document.getElementById('scanner-not-found').style.display = 'none';
-      _scannerSetPhase(1);
-      _startBarcodeScanner();
+      _retryBarcodeScanner();
     });
   }
   const btnManualCodeSearch = document.getElementById('btn-manual-code-search');
   if (btnManualCodeSearch) {
     btnManualCodeSearch.addEventListener('click', async function() {
       const code = document.getElementById('scanner-manual-code')?.value.trim();
-      if (code) {
-        document.getElementById('scanner-not-found').style.display = 'none';
-        _scannerSetPhase(2);
-        _scannerSetStatus('Buscando código manual...', true);
-        await API._queryOpenFoodFactsByBarcode(code);
-      }
+      await _searchScannerBarcode(code);
     });
   }
 
@@ -2785,9 +2905,9 @@ export function initScannerEvents() {
   const btnConfirmAdd = document.getElementById('btn-scanner-confirm');
   if (btnConfirmAdd) {
     btnConfirmAdd.addEventListener('click', function() {
-      if (!ScannerState.pendingFood) return;
+      if (ScannerState.phase !== ScannerPhase.CONFIRM || !ScannerState.pendingFood) return;
       const g = parseUserNumber(document.getElementById('scanner-conf-grams')?.value);
-      _executeRegisterScannedProduct(ScannerState.pendingFood, g, ScannerState.pendingFoodSource);
+      void _executeRegisterScannedProduct(ScannerState.pendingFood, g, ScannerState.pendingFoodSource);
     });
   }
 }
