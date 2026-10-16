@@ -7,7 +7,7 @@ import { LOCAL_FOOD_DB, SYNONYMS_MAP } from './modules/db.js';
 import * as Utils from './modules/utils.js';
 import * as API from './modules/api.js';
 import * as UI from './modules/ui.js';
-import { InitializationState, initializeApp, resetFromRecovery } from './modules/startup.js';
+import { InitializationState, initializeApp, registerDayLifecycleAfterStartup, resetFromRecovery } from './modules/startup.js';
 
 /* ──────────────────────────────────────────────────────────────
    INICIALIZACIÓN
@@ -21,6 +21,23 @@ function handleURLParams() {
 
 let initializationPromise;
 
+function registerLocalDayLifecycle(initializationState) {
+  return registerDayLifecycleAfterStartup(initializationState, {
+    app: App,
+    documentRef: document,
+    windowRef: window,
+    reconcileLocalDay: Utils.reconcileLocalDay,
+    onDayChanged: () => {
+      UI.setGreeting();
+      if (App.currentPage === 'home') void UI.refreshDashboard();
+      if (App.currentPage === 'diary' && App.diaryFollowsToday) void UI.refreshDiary();
+      if (App.currentPage === 'water') void UI.refreshWaterPage(false);
+      if (App.currentPage === 'progress') void UI.refreshProgress();
+    },
+    onError: (error) => UI.showPersistenceFailure(error, 'reconciliar el día local'),
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   initializationPromise = initializeApp({
     app: App,
@@ -31,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     documentRef: document,
   });
   const initializationState = await initializationPromise;
+  registerLocalDayLifecycle(initializationState);
 
   if (initializationState === InitializationState.RECOVERY_ERROR) {
     document.getElementById('storage-recovery-reset')?.addEventListener('click', () => resetFromRecovery({

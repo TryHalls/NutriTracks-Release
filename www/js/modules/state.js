@@ -9,10 +9,12 @@ import { isResetStorageKey } from './storage-policy.js';
 export const App = {
   user: null,
   currentPage: 'home',
+  todayDate: null,
   todayLogs: [],
   todayWater: 0,
   diaryLogs: [],
   currentDiaryDate: new Date(),
+  diaryFollowsToday: true,
   currentMealType: 'breakfast',
   selectedFood: null,
   caloriesRingChart: null,

@@ -4,6 +4,7 @@ import { App, LS, PersistenceCode, PersistenceError } from '../www/js/modules/st
 import {
   InitializationState,
   initializeApp,
+  registerDayLifecycleAfterStartup,
   resetFromRecovery,
 } from '../www/js/modules/startup.js';
 
@@ -28,7 +29,7 @@ function createHarness() {
     elements,
     calls,
     documentRef: { getElementById: (id) => elements.get(id) || null },
-    utils: { checkAndResetForNewDay: () => { calls.date += 1; } },
+    utils: { reconcileLocalDay: () => { calls.date += 1; } },
     ui: {
       injectWaterPage: () => { calls.inject += 1; },
       applySavedDarkMode: () => { calls.theme += 1; },
@@ -67,7 +68,7 @@ test('inicio: usuario válido valida primero y después inicializa fecha y aplic
     ...harness,
     app,
     ls: { getUser: () => { order.push('user'); return user; } },
-    utils: { checkAndResetForNewDay: () => { order.push('date'); harness.calls.date += 1; } },
+    utils: { reconcileLocalDay: () => { order.push('date'); harness.calls.date += 1; } },
   });
 
   assert.equal(result, InitializationState.READY);
@@ -78,6 +79,21 @@ test('inicio: usuario válido valida primero y después inicializa fecha y aplic
   assert.equal(harness.calls.greeting, 1);
   assert.equal(harness.calls.dashboard, 1);
   assert.equal(harness.calls.config, 1);
+
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  let resumeCalls = 0;
+  registerDayLifecycleAfterStartup(result, {
+    app,
+    documentRef: {
+      visibilityState: 'visible',
+      addEventListener: (type, listener) => documentListeners.set(type, listener),
+    },
+    windowRef: { addEventListener: (type, listener) => windowListeners.set(type, listener) },
+    reconcileLocalDay: () => { resumeCalls += 1; return true; },
+  });
+  assert.equal(windowListeners.get('focus')(), true);
+  assert.equal(resumeCalls, 1);
 });
 
 test('inicio: nt_user corrupto entra en recuperación sin escribir ni mutar otros datos', async () => {
@@ -109,6 +125,18 @@ test('inicio: nt_user corrupto entra en recuperación sin escribir ni mutar otro
   assert.equal(harness.calls.theme, 0);
   assert.deepEqual([...storageBefore], snapshot);
   assert.equal(storageBefore.has('nt_last_active_date'), false);
+
+  const listenerCounts = { document: 0, window: 0 };
+  assert.equal(registerDayLifecycleAfterStartup(result, {
+    app,
+    documentRef: {
+      addEventListener: () => { listenerCounts.document += 1; },
+    },
+    windowRef: { addEventListener: () => { listenerCounts.window += 1; } },
+    reconcileLocalDay: () => { harness.calls.date += 1; },
+  }), null);
+  assert.deepEqual(listenerCounts, { document: 0, window: 0 });
+  assert.equal(harness.calls.date, 0);
 });
 
 test('inicio: error de lectura usa el mismo estado conservador', async () => {
@@ -127,6 +155,26 @@ test('inicio: error de lectura usa el mismo estado conservador', async () => {
   assert.equal(visible(harness, 'onboarding-screen'), false);
   assert.equal(harness.calls.date, 0);
   assert.equal(harness.calls.inject, 0);
+  assert.equal(harness.calls.errors, 1);
+});
+
+test('inicio: error al reconciliar fecha válida entra en recuperación', async () => {
+  const harness = createHarness();
+  const app = { user: null };
+  const error = new PersistenceError(PersistenceCode.READ_FAILED, 'fallo al cargar el día');
+  const result = await initializeApp({
+    ...harness,
+    app,
+    ls: { getUser: () => ({ id: 'user-b', name: 'Ada' }) },
+    utils: { reconcileLocalDay: () => { throw error; } },
+  });
+
+  assert.equal(result, InitializationState.RECOVERY_ERROR);
+  assert.equal(app.user, null);
+  assert.equal(visible(harness, 'storage-recovery-screen'), true);
+  assert.equal(visible(harness, 'app'), false);
+  assert.equal(harness.calls.inject, 0);
+  assert.equal(harness.calls.dashboard, 0);
   assert.equal(harness.calls.errors, 1);
 });
 
